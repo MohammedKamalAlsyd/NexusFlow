@@ -3,7 +3,7 @@ import { z } from "zod";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { validateFileOperation } from "@/safety/pathValidator.js";
-import { askForPermission } from "../../safety/interactivity.js";
+import { askForPermission } from "@/safety/interactivity.js";
 
 
 // --- READ FILE ---

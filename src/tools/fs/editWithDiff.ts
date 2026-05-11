@@ -3,9 +3,9 @@ import { z } from "zod";
 import fs from "node:fs/promises";
 import path from "node:path";
 import * as Diff from "diff";
-import { settings } from "../../config/index.js";
-import { validateFileOperation } from "../../safety/pathValidator.js";
-import { askForPermission } from "../../safety/interactivity.js";
+import { settings } from "@/config/index.js";
+import { validateFileOperation } from "@/safety/pathValidator.js";
+import { askForPermission } from "@/safety/interactivity.js";
 
 // --- EDIT FILE TOOL ---
 export const editFileTool = tool(

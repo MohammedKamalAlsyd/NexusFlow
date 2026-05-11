@@ -5,6 +5,7 @@ export interface SafetyContext {
     projectRoot: string;
     allowedPaths: string[];
     blockedPatterns: string[];
+    blockedCommands: string[];
     requiredConfirmation: boolean;
     readOnlyFiles: string[];
     notAllowedExtensions: string[];
@@ -14,6 +15,7 @@ const DEFAULT_CONTEXT: SafetyContext = {
     projectRoot: process.cwd(),
     allowedPaths: ["CodeSandBox"], // "." means allow all inside project root. Change to ["CodeSandBox"] if strictly isolated.
     blockedPatterns: ["node_modules", "\\.git", "dist", "build"],
+    blockedCommands: ["rm -rf", "sudo", "shutdown", "reboot", "kill", "passwd", "format"],
     requiredConfirmation: true,
     readOnlyFiles: ["package.json", "package-lock.json"],
     notAllowedExtensions: [".exe", ".sh", ".bat", ".cmd"],
