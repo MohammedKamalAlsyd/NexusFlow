@@ -2,8 +2,8 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
-import { askForPermission } from "../../safety/interactivity.js";
-import { safetyManager } from "../../safety/safetyContext.js";
+import { askForPermission } from "@/safety/interactivity.js";
+import { safetyManager } from "@/safety/safetyContext.js";
 
 const execAsync = promisify(exec);
 
