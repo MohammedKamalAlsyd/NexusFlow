@@ -11,6 +11,7 @@ dotenv.config({ path: path.join(process.cwd(), '.env') });
 
 export interface AgentConfig {
     name: string;
+    model_name: string;
     systemPrompt: string;
     temperature?: number;
     maxTokens?: number;
@@ -19,21 +20,22 @@ export interface AgentConfig {
 export class BaseAgent {
     public readonly name: string;
     public readonly systemPrompt: string;
+    public readonly model_name: string;
     protected llm: ChatOpenAI;
 
     constructor(config: AgentConfig) {
         this.name = config.name;
         this.systemPrompt = config.systemPrompt;
+        this.model_name = config.model_name
 
         // 1. Load and Validate Env Variables
         const apiKey = String(process.env.OPENROUTER_API_KEY || "");
-        const modelName = String(process.env.MODEL_NAME || "");
         const baseURL = String(process.env.OPENROUTER_BASE_URL || "");
         const appUrl = String(process.env.APP_URL || "");
 
         const missingVars = [];
         if (!apiKey) missingVars.push("OPENROUTER_API_KEY");
-        if (!modelName) missingVars.push("MODEL_NAME");
+        if (!this.model_name) missingVars.push("MODEL_NAME");
         if (!baseURL) missingVars.push("OPENROUTER_BASE_URL");
         if (!appUrl) missingVars.push("APP_URL");
 
@@ -46,7 +48,7 @@ export class BaseAgent {
 
         // 2. Initialize the shared LLM Backbone
         this.llm = new ChatOpenAI({
-            modelName: modelName,
+            modelName: this.model_name,
             apiKey: apiKey,
             temperature: config.temperature ?? 0.2,
             maxTokens: config.maxTokens ?? 4096,
