@@ -8,6 +8,9 @@ import { executeCommandTool } from "./terminal/commandUtils.js";
 export const localFsTools = [readFileTool, writeFileTool, deleteFileTool, listFilesTool, editFileTool, restoreFileTool, searchContentTool];
 export const localTerminalTools = [executeCommandTool];
 
+// Define roles types
+export type AgentRole = "software-engineer" | "data-ops" | "devops" | "supervisor";
+
 /**
  * A dynamic registry that combines local code tools with remote MCP tools.
  */
@@ -43,23 +46,31 @@ export class ToolManager {
     /**
     * Returns a filtered array of tools based on the Agent's Role.
     */
-    public getToolsForRole(role: "software-engineer" | "data-analyst" | "supervisor") {
+    public getToolsForRole(role: AgentRole) {
         const allTools = Array.from(this.tools.values());
 
         switch (role) {
             case "software-engineer":
-                // SWE gets FS and Terminal tools
                 return allTools.filter(t =>
                     localFsTools.some(local => local.name === t.name) ||
                     localTerminalTools.some(local => local.name === t.name)
                 );
 
-            case "data-analyst":
-                // Data analyst gets Read tools and MCP database tools (which aren't in localFsTools)
-                return []; // return empty for now
+            case "data-ops":
+                // Filter: Tools that are NOT local FS and NOT terminal (likely MCP)
+                return allTools.filter(t =>
+                    !localFsTools.some(local => local.name === t.name) &&
+                    !localTerminalTools.some(local => local.name === t.name)
+                );
+
+            case "devops":
+                // DevOps might want specific MCP tools (like github) and maybe terminal
+                return allTools.filter(t =>
+                    t.name.includes("github") ||
+                    localTerminalTools.some(local => local.name === t.name)
+                );
 
             case "supervisor":
-                // Supervisor usually just routes, doesn't execute tools directly
                 return [];
 
             default:
