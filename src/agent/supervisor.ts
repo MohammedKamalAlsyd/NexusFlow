@@ -1,7 +1,7 @@
 import { SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
-import { BaseAgent } from "./BaseAgent.js";
-import { AgentState } from "./state.js";
+import { BaseAgent } from "@/agent/BaseAgent.js";
+import { AgentState } from "@/agent/state.js";
 
 // Define the routing schema
 const routingSchema = z.object({
@@ -31,12 +31,17 @@ Otherwise, respond with the name of the next specialist agent required to progre
   public async route(state: typeof AgentState.State) {
     const supervisorChain = this.llm.withStructuredOutput(routingSchema);
 
-    const messages = [
-      new SystemMessage(this.systemPrompt),
-      ...state.messages,
-    ];
 
-    const response = await supervisorChain.invoke(messages);
-    return { next: response.next };
+    try {
+      const messages = [
+        new SystemMessage(this.systemPrompt),
+        ...state.messages,
+      ];
+      const response = await supervisorChain.invoke(messages);
+      return { next: response.next };
+    } catch (e) {
+      console.error("Supervisor JSON parsing failed, defaulting to FINISH", e);
+      return { next: "FINISH" };
+    }
   }
 }

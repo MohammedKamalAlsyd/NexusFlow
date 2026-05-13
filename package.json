@@ -10,7 +10,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsc",
     "start": "tsx dist/cli/index.js",
-    "dev": "tsx src/cli/index.ts",
+    "dev": "tsx src/index.ts",
     "mcp:inspect:github": "npx @modelcontextprotocol/inspector docker run -i --rm -e GITHUB_PERSONAL_ACCESS_TOKEN=$GITHUB_TOKEN mcp/github",
     "mcp:inspect:postgres": "npx @modelcontextprotocol/inspector docker run -i --rm -e DATABASE_URL=$DATABASE_URL mcp/postgres",
     "test:mcp-loader": "npx tsx src/mcp/test-loader.ts"
