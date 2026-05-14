@@ -4,15 +4,24 @@ import { editFileTool, restoreFileTool } from "./fs/editWithDiff.js";
 import { searchContentTool } from "./fs/searchFiles.js";
 import { executeCommandTool } from "./terminal/commandUtils.js";
 
-// Export standard local tools arrays
+// Import your newly created Cloud Discovery Tools
+import { cloudDiscoveryTools } from "./cloud/index.js";
+// Note: Ensure you have an index.ts that exports both awsDiscoveryTools AND azureDiscoveryTools
+
 export const localFsTools = [readFileTool, writeFileTool, deleteFileTool, listFilesTool, editFileTool, restoreFileTool, searchContentTool];
 export const localTerminalTools = [executeCommandTool];
 
-// Define roles types
-export type AgentRole = "software-engineer" | "data-ops" | "devops" | "supervisor";
+// 1. Updated Roles
+export type AgentRole =
+    | "software-engineer"
+    | "data-ops"
+    | "devops"
+    | "supervisor"
+    | "cloud-explorer";
 
 /**
- * A dynamic registry that combines local code tools with remote MCP tools.
+ * A dynamic registry that combines local code tools, terminal tools,
+ * and remote cloud discovery/MCP tools.
  */
 export class ToolManager {
     private tools: Map<string, DynamicStructuredTool<any>>;
@@ -22,19 +31,17 @@ export class ToolManager {
         this.loadLocalTools();
     }
 
-    /**
-     * Loads the hardcoded, local machine tools.
-    */
     private loadLocalTools() {
-        const allLocalTools = [...localFsTools, ...localTerminalTools];
+        const allLocalTools = [
+            ...localFsTools,
+            ...localTerminalTools,
+            ...cloudDiscoveryTools // Injected from your new cloud folders
+        ];
         for (const tool of allLocalTools) {
             this.tools.set(tool.name, tool as DynamicStructuredTool<any>);
         }
     }
 
-    /**
-    * Will be used to dynamically inject external MCP tools.
-    */
     public registerDynamicTool(tool: DynamicStructuredTool<any>) {
         if (this.tools.has(tool.name)) {
             console.warn(`[ToolManager] Overwriting existing tool: ${tool.name}`);
@@ -43,9 +50,6 @@ export class ToolManager {
         console.log(`🔌 Registered Dynamic Tool: ${tool.name}`);
     }
 
-    /**
-    * Returns a filtered array of tools based on the Agent's Role.
-    */
     public getToolsForRole(role: AgentRole) {
         const allTools = Array.from(this.tools.values());
 
@@ -57,17 +61,22 @@ export class ToolManager {
                 );
 
             case "data-ops":
-                // Filter: Tools that are NOT local FS and NOT terminal (likely MCP)
+                // MCP Tools + Cloud Discovery Tools
                 return allTools.filter(t =>
                     !localFsTools.some(local => local.name === t.name) &&
                     !localTerminalTools.some(local => local.name === t.name)
                 );
 
             case "devops":
-                // DevOps might want specific MCP tools (like github) and maybe terminal
                 return allTools.filter(t =>
                     t.name.includes("github") ||
                     localTerminalTools.some(local => local.name === t.name)
+                );
+
+            case "cloud-explorer":
+                // Specifically returns the cloud discovery tools
+                return allTools.filter(t =>
+                    cloudDiscoveryTools.some(cloud => cloud.name === t.name)
                 );
 
             case "supervisor":
@@ -81,7 +90,6 @@ export class ToolManager {
     public getAllTools() {
         return Array.from(this.tools.values());
     }
-
 }
 
 // Export singleton
