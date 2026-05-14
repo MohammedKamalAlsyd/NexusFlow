@@ -64,17 +64,26 @@ export const architectNode = async (state: typeof AgentState.State) => {
 export const etlCoderNode = async (state: typeof AgentState.State) => {
     console.log("👨‍💻 [ETL CODER]: Writing data transformation logic...");
     const context = state.validationErrors
-        ? `Fix these previous errors: ${state.validationErrors}.`
+        ? `Fix these previous errors: ${state.validationErrors}. Remember to properly escape JSON strings!`
         : `Generate ETL scripts for this plan: ${JSON.stringify(state.cloudPlan)}. 
-           Use existing resources from the environment: ${JSON.stringify(state.environmentContext)}.`;
+           Use existing resources: ${JSON.stringify(state.environmentContext)}.`;
 
     const response = await etlCoder.invokeRaw(context);
-    const artifacts = ParserUtils.extractOutput(response.content, "json");
 
-    return {
-        currentStep: "etl-coding",
-        artifacts: artifacts
-    };
+    try {
+        const artifacts = ParserUtils.extractOutput(response.content, "json");
+        return {
+            currentStep: "etl-coding",
+            artifacts: artifacts
+        };
+    } catch (error: any) {
+        console.warn(`⚠️ [ETL CODER]: JSON Formatting failed. Sending to self-healing loop.`);
+        return {
+            currentStep: "etl-coding",
+            // We inject the parse error so the agent knows exactly what it did wrong on the next loop
+            validationErrors: `JSON Parsing Failed: ${error.message}. You MUST properly escape all double quotes (\") and newlines (\\n) inside your code strings.`
+        };
+    }
 };
 
 /**
@@ -84,17 +93,25 @@ export const etlCoderNode = async (state: typeof AgentState.State) => {
 export const iacCoderNode = async (state: typeof AgentState.State) => {
     console.log("🏗️  [IaC CODER]: Generating Pulumi infrastructure code...");
     const prompt = `Generate Pulumi code for this plan: ${JSON.stringify(state.cloudPlan)}.
-    Strategy is '${state.executionStrategy}'. If BROWNFIELD, use lookups for existing resources in ${JSON.stringify(state.environmentContext)}.
-    Reference these ETL scripts: ${JSON.stringify(Object.keys(state.artifacts))}.
+    Strategy: '${state.executionStrategy}'.
+    Reference these artifacts: ${JSON.stringify(Object.keys(state.artifacts))}.
     ${state.validationErrors ? `Correct these issues: ${state.validationErrors}` : ""}`;
 
     const response = await iacCoder.invokeRaw(prompt);
-    const iacArtifacts = ParserUtils.extractOutput(response.content, "json");
 
-    return {
-        currentStep: "iac-coding",
-        artifacts: iacArtifacts // Merges with ETL artifacts via reducer
-    };
+    try {
+        const iacArtifacts = ParserUtils.extractOutput(response.content, "json");
+        return {
+            currentStep: "iac-coding",
+            artifacts: iacArtifacts // Merges with ETL artifacts via reducer
+        };
+    } catch (error: any) {
+        console.warn(`⚠️ [IaC CODER]: JSON Formatting failed. Sending to self-healing loop.`);
+        return {
+            currentStep: "iac-coding",
+            validationErrors: `JSON Parsing Failed: ${error.message}. Ensure your Pulumi Python script is properly escaped inside the JSON string.`
+        };
+    }
 };
 
 /**
