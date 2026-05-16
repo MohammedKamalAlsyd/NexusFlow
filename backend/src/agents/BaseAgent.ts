@@ -3,6 +3,7 @@ import { DynamicStructuredTool } from "@langchain/core/tools";
 import { StateGraph, START, END, MessagesAnnotation } from "@langchain/langgraph";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 import { AIMessage } from "@langchain/core/messages";
+import type { RunnableConfig } from "@langchain/core/runnables";
 import * as dotenv from "dotenv";
 import path from "node:path";
 import type { AgentResponse } from "@/types/agent.types.js";
@@ -51,7 +52,7 @@ export class BaseAgent {
             modelName: this.model_name,
             apiKey: apiKey,
             temperature: config.temperature ?? 0.2,
-            maxTokens: config.maxTokens ?? 4096,
+            maxTokens: config.maxTokens ?? 1024,
             configuration: {
                 baseURL: baseURL,
                 defaultHeaders: {
@@ -67,12 +68,12 @@ export class BaseAgent {
      * Executes a raw string query and returns a strictly typed AgentResponse.
      * Useful for direct one-off questions without tools.
      */
-    public async invokeRaw(input: string): Promise<AgentResponse> {
+    public async invokeRaw(input: string, config?: RunnableConfig): Promise<AgentResponse> {
         try {
             const response = await this.llm.invoke([
                 { role: "system", content: this.systemPrompt },
                 { role: "user", content: input },
-            ]) as any;
+            ], config) as any;
 
             const meta = response.response_metadata;
             const usage = response.usage_metadata;

@@ -8,6 +8,7 @@ import { DataOpsAgent } from "@/agents/roles/DataOpsAgent.js";
 import { PulumiService } from "@/services/PulumiService.js";
 import { ParserUtils } from "@/utils/parser.js";
 import { AIMessage } from "@langchain/core/messages";
+import type { RunnableConfig } from "@langchain/core/runnables";
 
 // Instantiate all agents
 const explorer = new CloudExplorerAgent();
@@ -17,16 +18,38 @@ const iacCoder = new IaCCoderAgent();
 const validator = new ValidatorAgent();
 const dataOps = new DataOpsAgent();
 
+
+// --- Helper function to make nodes more robust ---
+async function runAgentNode(agent: any, prompt: string, stepName: string, state: typeof AgentState.State, config?: RunnableConfig) {
+    try {
+        const response = await agent.invokeRaw(prompt, config); // Pass config to Agent
+        const artifacts = ParserUtils.extractOutput(response.content, "json");
+        return {
+            currentStep: stepName,
+            artifacts: artifacts,
+            validationErrors: null
+        };
+    } catch (error: any) {
+        console.warn(`⚠️ [${stepName.toUpperCase()}]: Agent execution or parsing failed. Triggering self-healing.`);
+        const errorMessage = error.message || "An unknown error occurred.";
+        return {
+            currentStep: `${stepName}-failed`,
+            validationErrors: `Agent ${agent.name} failed with error: ${errorMessage}. Please fix your output.`
+        };
+    }
+}
+
+
 /**
  * NODE 1: Cloud Explorer (Reconnaissance)
  * Scans the cloud environment based on the user's request.
  */
-export const explorerNode = async (state: typeof AgentState.State) => {
+export const explorerNode = async (state: typeof AgentState.State, config?: RunnableConfig) => {
     console.log("🔍 [EXPLORER]: Scanning existing cloud environment...");
     const lastMessage = state.messages[state.messages.length - 1]?.content as string;
 
     const runner = explorer.getRunnable(); // Gets agent with cloud discovery tools
-    const response = await runner.invoke({ messages: [{ role: "user", content: lastMessage }] });
+    const response = await runner.invoke({ messages: [{ role: "user", content: lastMessage }] }, config);
     const lastAiMessage = response.messages[response.messages.length - 1];
 
     // The explorer agent uses tools to populate the context
@@ -40,14 +63,14 @@ export const explorerNode = async (state: typeof AgentState.State) => {
  * NODE 2: Architect
  * Creates a plan based on user request AND discovered environment context.
  */
-export const architectNode = async (state: typeof AgentState.State) => {
+export const architectNode = async (state: typeof AgentState.State, config?: RunnableConfig) => {
     console.log("🧠 [ARCHITECT]: Planning based on environment context...");
     const prompt = `User Request: ${JSON.stringify(state.messages)}
     Discovered Environment: ${JSON.stringify(state.environmentContext)}
     Based on this, decide the executionStrategy ('GREENFIELD', 'BROWNFIELD_ETL', 'DATA_ANALYSIS')
     and create a detailed 'plan'. Output a single JSON object with 'strategy' and 'plan' keys.`;
 
-    const response = await architect.invokeRaw(prompt);
+    const response = await architect.invokeRaw(prompt, config);
     const planData = ParserUtils.extractOutput(response.content, "json");
 
     return {
@@ -61,70 +84,41 @@ export const architectNode = async (state: typeof AgentState.State) => {
  * NODE 3: ETL Coder
  * Generates data transformation scripts.
  */
-export const etlCoderNode = async (state: typeof AgentState.State) => {
+export const etlCoderNode = async (state: typeof AgentState.State, config?: RunnableConfig) => {
     console.log("👨‍💻 [ETL CODER]: Writing data transformation logic...");
-    const context = state.validationErrors
+    const prompt = state.validationErrors
         ? `Fix these previous errors: ${state.validationErrors}. Remember to properly escape JSON strings!`
         : `Generate ETL scripts for this plan: ${JSON.stringify(state.cloudPlan)}. 
            Use existing resources: ${JSON.stringify(state.environmentContext)}.`;
 
-    const response = await etlCoder.invokeRaw(context);
-
-    try {
-        const artifacts = ParserUtils.extractOutput(response.content, "json");
-        return {
-            currentStep: "etl-coding",
-            artifacts: artifacts
-        };
-    } catch (error: any) {
-        console.warn(`⚠️ [ETL CODER]: JSON Formatting failed. Sending to self-healing loop.`);
-        return {
-            currentStep: "etl-coding",
-            // We inject the parse error so the agent knows exactly what it did wrong on the next loop
-            validationErrors: `JSON Parsing Failed: ${error.message}. You MUST properly escape all double quotes (\") and newlines (\\n) inside your code strings.`
-        };
-    }
+    return await runAgentNode(etlCoder, prompt, "etl-coding", state, config);
 };
 
 /**
  * NODE 4: IaC Coder
  * Generates Pulumi infrastructure code.
  */
-export const iacCoderNode = async (state: typeof AgentState.State) => {
+export const iacCoderNode = async (state: typeof AgentState.State, config?: RunnableConfig) => {
     console.log("🏗️  [IaC CODER]: Generating Pulumi infrastructure code...");
     const prompt = `Generate Pulumi code for this plan: ${JSON.stringify(state.cloudPlan)}.
     Strategy: '${state.executionStrategy}'.
     Reference these artifacts: ${JSON.stringify(Object.keys(state.artifacts))}.
     ${state.validationErrors ? `Correct these issues: ${state.validationErrors}` : ""}`;
 
-    const response = await iacCoder.invokeRaw(prompt);
-
-    try {
-        const iacArtifacts = ParserUtils.extractOutput(response.content, "json");
-        return {
-            currentStep: "iac-coding",
-            artifacts: iacArtifacts // Merges with ETL artifacts via reducer
-        };
-    } catch (error: any) {
-        console.warn(`⚠️ [IaC CODER]: JSON Formatting failed. Sending to self-healing loop.`);
-        return {
-            currentStep: "iac-coding",
-            validationErrors: `JSON Parsing Failed: ${error.message}. Ensure your Pulumi Python script is properly escaped inside the JSON string.`
-        };
-    }
+    return await runAgentNode(iacCoder, prompt, "iac-coding", state, config);
 };
 
 /**
  * NODE 5: Validator
  * Audits all generated artifacts.
  */
-export const validatorNode = async (state: typeof AgentState.State) => {
+export const validatorNode = async (state: typeof AgentState.State, config?: RunnableConfig) => {
     console.log("🛡️  [VALIDATOR]: Auditing generated code for security and logic...");
     const prompt = `Audit these artifacts: ${JSON.stringify(state.artifacts)}. 
     Ensure the plan (${JSON.stringify(state.cloudPlan)}) and strategy (${state.executionStrategy}) are met.
     Return a JSON object: { "isValid": boolean, "errors": string | null }`;
 
-    const response = await validator.invokeRaw(prompt);
+    const response = await validator.invokeRaw(prompt, config);
     const result = ParserUtils.extractOutput(response.content, "json");
 
     return {
@@ -138,7 +132,7 @@ export const validatorNode = async (state: typeof AgentState.State) => {
  * NODE 6: Deployer (The "Muscle")
  * Executes the validated plan using Pulumi.
  */
-export const deployerNode = async (state: typeof AgentState.State) => {
+export const deployerNode = async (state: typeof AgentState.State, config?: RunnableConfig) => {
     console.log("\n📦 [DEPLOYER]: Preparing Pulumi workspace...");
     const deployer = new PulumiService(`nexusflow-run-${Date.now()}`); // Unique workspace per run
 
@@ -176,11 +170,11 @@ export const deployerNode = async (state: typeof AgentState.State) => {
  * BRANCH NODE: DataOps
  * For 'DATA_ANALYSIS' strategy. Runs queries instead of deploying.
  */
-export const dataOpsNode = async (state: typeof AgentState.State) => {
+export const dataOpsNode = async (state: typeof AgentState.State, config?: RunnableConfig) => {
     console.log("📊 [DATA OPS]: Running analysis queries...");
     const prompt = `Execute this analysis plan: ${JSON.stringify(state.cloudPlan)} against the environment: ${JSON.stringify(state.environmentContext)}`;
     // This agent would use MCP tools for DB queries
-    const response = await dataOps.invokeRaw(prompt);
+    const response = await dataOps.invokeRaw(prompt, config);
 
     return {
         currentStep: "data-analysis-complete",

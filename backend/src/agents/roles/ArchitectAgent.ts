@@ -10,6 +10,7 @@ export class ArchitectAgent extends BaseAgent {
             name: "architect",
             // Dynamically load the model from environment variables, with a fallback
             model_name: process.env.ARCHITECT_MODEL_NAME || "gpt-4-turbo",
+            maxTokens: 2048,
             systemPrompt: `You are a Principal Multi-Cloud Architect. Your primary responsibility is designing robust, scalable, and secure data workflows across AWS, Azure, and Databricks.
 
             CORE DIRECTIVES:
