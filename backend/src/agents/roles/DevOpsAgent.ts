@@ -9,7 +9,7 @@ export class DevOpsAgent extends BaseAgent {
     constructor() {
         super({
             name: "devops",
-            model_name: process.env.DEVOPS_MODEL_NAME || "gpt-4-turbo",
+            model_name: process.env.DEVOPS_MODEL_NAME || "deepseek/deepseek-v4-flash",
             systemPrompt: `You are a Senior DevOps and Platform Engineer. 
             Your domain is the software delivery lifecycle (SDLC) and git workflows.
 

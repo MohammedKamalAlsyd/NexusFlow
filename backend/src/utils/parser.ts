@@ -1,5 +1,6 @@
 import yaml from "js-yaml";
 export type OutputFormat = "json" | "yaml" | "text";
+import * as fs from 'fs';
 
 
 /**
@@ -68,6 +69,9 @@ export class ParserUtils {
                 return yaml.load(text);
             }
         } catch (error) {
+            // Saving The raw text for debugging purposes before exiting
+            fs.writeFileSync("parsing_error_debug.txt", text, "utf-8");
+            process.exit(1);
             console.error(`[ParserUtils] Failed to parse as ${format}.Raw text: `, text);
             // Fallback: if parsing fails, return the raw text to avoid crashing the workflow
             return text;

@@ -9,7 +9,7 @@ export class IaCCoderAgent extends BaseAgent {
         super({
             name: "iac-coder",
             // Dynamically load the model from environment variables, with a fallback
-            model_name: process.env.IAC_MODEL_NAME || "gpt-4-turbo",
+            model_name: process.env.IAC_MODEL_NAME || "deepseek/deepseek-v4-flash",
             systemPrompt: `You are a Senior Infrastructure as Code (IaC) Specialist focusing on Pulumi.
 
             CORE DIRECTIVES:
