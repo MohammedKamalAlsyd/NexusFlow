@@ -50,7 +50,7 @@ export const AgentState = Annotation.Root({
         default: () => null,
     }),
     // Tracks if deployment was successful to end the graph
-    deploymentStatus: Annotation<"PENDING" | "SUCCESS" | "FAILED">({
+    deploymentStatus: Annotation<"PENDING" | "SUCCESS" | "FAILED" | "FATAL_ERROR">({
         reducer: (curr, next) => next ?? curr,
         default: () => "PENDING",
     }),

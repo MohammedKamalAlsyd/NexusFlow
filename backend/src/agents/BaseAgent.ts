@@ -138,4 +138,8 @@ export class BaseAgent {
         // 4. Compile and return the executable graph
         return workflow.compile();
     }
+
+    public get model() {
+        return this.llm;
+    }
 }

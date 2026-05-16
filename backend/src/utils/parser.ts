@@ -32,6 +32,42 @@ export class ParserUtils {
         return this.parseByFormat(cleanText, format);
     }
 
+
+    /**
+         * Parses a string containing XML-style artifact tags and extracts their contents into an object.
+         * 
+         * @param text - The raw string response from the LLM containing <artifact filename="..."> blocks.
+         * @returns An object where keys are filenames and values contain the artifact body, type, and target.
+         * @throws Error if no valid <artifact> tags are found in the input.
+         */
+    public static extractArtifacts(text: string): Record<string, { body: string; type: string; target: string }> {
+        const artifacts: Record<string, { body: string; type: string; target: string }> = {};
+        // Match anything between <artifact filename="..."> and </artifact>
+        const regex = /<artifact\s+filename="([^"]+)">([\s\S]*?)<\/artifact>/g;
+
+        let match: RegExpExecArray | null;
+        while ((match = regex.exec(text)) !== null) {
+            // Use optional chaining and nullish coalescing to satisfy TypeScript 2532/2538
+            const filename = match[1] ?? "";
+            const body = match[2]?.trim() ?? "";
+
+            // Only add to artifacts if filename is valid (not empty)
+            if (filename) {
+                artifacts[filename] = {
+                    body,
+                    type: "file",
+                    target: "workspace"
+                };
+            }
+        }
+
+        if (Object.keys(artifacts).length === 0) {
+            throw new Error("No valid <artifact> tags found in the response.");
+        }
+
+        return artifacts;
+    }
+
     /**
     * Logic for specific format parsing
     */
@@ -68,13 +104,13 @@ export class ParserUtils {
             if (format === "yaml") {
                 return yaml.load(text);
             }
-        } catch (error) {
-            // Saving The raw text for debugging purposes before exiting
+        } catch (error: any) {
+            // Save the raw text for debugging purposes
             fs.writeFileSync("parsing_error_debug.txt", text, "utf-8");
-            process.exit(1);
-            console.error(`[ParserUtils] Failed to parse as ${format}.Raw text: `, text);
-            // Fallback: if parsing fails, return the raw text to avoid crashing the workflow
-            return text;
+            console.error(`[ParserUtils] Failed to parse as ${format}.`);
+
+            // throw an error so LangGraph can handle it!
+            throw new Error(`Parsing failed. Expected ${format}. Raw output saved to parsing_error_debug.txt. Error: ${error.message}`);
         }
 
         return text;

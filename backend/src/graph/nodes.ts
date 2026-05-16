@@ -9,6 +9,7 @@ import { PulumiService } from "@/services/PulumiService.js";
 import { ParserUtils } from "@/utils/parser.js";
 import { AIMessage } from "@langchain/core/messages";
 import type { RunnableConfig } from "@langchain/core/runnables";
+import z from "zod";
 
 // Instantiate all agents
 const explorer = new CloudExplorerAgent();
@@ -22,16 +23,37 @@ const dataOps = new DataOpsAgent();
 // --- Helper function to make nodes more robust ---
 async function runAgentNode(agent: any, prompt: string, stepName: string, state: typeof AgentState.State, config?: RunnableConfig) {
     try {
-        const response = await agent.invokeRaw(prompt, config); // Pass config to Agent
-        const artifacts = ParserUtils.extractOutput(response.content, "json");
+        const response = await agent.invokeRaw(prompt, config);
+
+        // 1. Check if the agent decided the error is an unfixable environment/system error
+        if (response.content.includes("<abort>")) {
+            const match = response.content.match(/<abort>([\s\S]*?)<\/abort>/);
+            const reason = match ? match[1].trim() : "Agent aborted due to fatal environment error.";
+            throw new Error(`AGENT_ABORT: ${reason}`);
+        }
+
+        // 2. Parse artifacts
+        const artifacts = ParserUtils.extractArtifacts(response.content);
         return {
             currentStep: stepName,
             artifacts: artifacts,
             validationErrors: null
         };
     } catch (error: any) {
-        console.warn(`⚠️ [${stepName.toUpperCase()}]: Agent execution or parsing failed. Triggering self-healing.`);
         const errorMessage = error.message || "An unknown error occurred.";
+
+        // Handle Agent intentional aborts cleanly
+        if (errorMessage.startsWith("AGENT_ABORT:")) {
+            console.error(`\n🛑 [${stepName.toUpperCase()}]: ${errorMessage}`);
+            return {
+                currentStep: `${stepName}-aborted`,
+                deploymentStatus: "FATAL_ERROR", // We use this to tell workflow.ts to stop completely
+                validationErrors: errorMessage
+            };
+        }
+
+        // Standard parsing/generation error -> trigger self-healing
+        console.warn(`⚠️ [${stepName.toUpperCase()}]: Agent execution or parsing failed. Triggering self-healing.`);
         return {
             currentStep: `${stepName}-failed`,
             validationErrors: `Agent ${agent.name} failed with error: ${errorMessage}. Please fix your output.`
@@ -103,7 +125,14 @@ export const iacCoderNode = async (state: typeof AgentState.State, config?: Runn
     const prompt = `Generate Pulumi code for this plan: ${JSON.stringify(state.cloudPlan)}.
     Strategy: '${state.executionStrategy}'.
     Reference these artifacts: ${JSON.stringify(Object.keys(state.artifacts))}.
-    ${state.validationErrors ? `Correct these issues: ${state.validationErrors}` : ""}`;
+    
+    ${state.validationErrors ? `
+    ATTENTION: The previous deployment failed with these console errors:
+    -----
+    ${state.validationErrors}
+    -----
+    If this is a code syntax error or Pulumi logical error, fix the code and output the <artifact> tags. 
+    If this is a SYSTEM, AUTH, or ENVIRONMENT error (e.g. missing API keys, Pulumi access tokens, missing permissions) that you CANNOT fix by changing the code, output ONLY: <abort>Explanation of the unfixable system error</abort>` : ""}`;
 
     return await runAgentNode(iacCoder, prompt, "iac-coding", state, config);
 };
@@ -114,12 +143,27 @@ export const iacCoderNode = async (state: typeof AgentState.State, config?: Runn
  */
 export const validatorNode = async (state: typeof AgentState.State, config?: RunnableConfig) => {
     console.log("🛡️  [VALIDATOR]: Auditing generated code for security and logic...");
-    const prompt = `Audit these artifacts: ${JSON.stringify(state.artifacts)}. 
+    // Format artifacts beautifully to save tokens and improve LLM comprehension
+    let codeContext = "";
+    for (const [filename, artifact] of Object.entries(state.artifacts)) {
+        codeContext += `\n\n### File: ${filename}\n\`\`\`\n${artifact.body}\n\`\`\`\n`;
+    }
+    const prompt = `Audit these artifacts: ${codeContext}. 
+
     Ensure the plan (${JSON.stringify(state.cloudPlan)}) and strategy (${state.executionStrategy}) are met.
     Return a JSON object: { "isValid": boolean, "errors": string | null }`;
 
-    const response = await validator.invokeRaw(prompt, config);
-    const result = ParserUtils.extractOutput(response.content, "json");
+    const validatorSchema = z.object({
+        isValid: z.boolean(),
+        errors: z.string().nullable().describe("If invalid, detail the issues here. If valid, return null.")
+    });
+    // Bind the schema to the LLM
+    const modelWithStructure = validator.model.withStructuredOutput(validatorSchema, { name: "ValidationResult" });
+
+    const result = await modelWithStructure.invoke([
+        { role: "system", content: validator.systemPrompt },
+        { role: "user", content: prompt }
+    ], config);
 
     return {
         currentStep: "validating",
