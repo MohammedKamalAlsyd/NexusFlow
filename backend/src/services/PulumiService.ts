@@ -43,9 +43,17 @@ export class PulumiService {
 
     public async deploy(): Promise<{ success: boolean; logs: string }> {
         try {
-            console.log("🔄 Initializing Pulumi Stack...");
-            await this.runCommand("pulumi stack init dev").catch(() => { });
+            // 1. FORCE PULUMI INTO LOCAL MODE (Prevents the PULUMI_ACCESS_TOKEN error)
+            console.log("🔐 Forcing Pulumi to use Local State Backend...");
+            await this.runCommand("pulumi login --local");
 
+            // 2. Initialize the stack
+            console.log("🔄 Initializing Pulumi Stack...");
+            await this.runCommand("pulumi stack init dev").catch(() => {
+                // Ignore errors if stack already exists
+            });
+
+            // 3. Run the deployment
             console.log("🚀 Running Pulumi Up...");
             const output = await this.runCommand("pulumi up --yes --stack dev");
 

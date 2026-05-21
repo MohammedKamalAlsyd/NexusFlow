@@ -10,7 +10,7 @@ async function main() {
     console.log("🚀 Starting NexusFlow Engine Test (with Tracing)");
     console.log("==========================================\n");
 
-    const userPrompt = `I need an AWS Glue job to extract data from my existing 'sales-data-lake-2024' S3 bucket, clean the 'customer_email' column, and load it into my 'analytics-db' RDS Postgres instance.`;
+    const userPrompt = `I need an AWS Glue job to extract data from my existing 'sales-data-lake-2024' S3 bucket, clean the 'customer_email' column, and save it back to S3 in Parquet format.`;
 
     // Generate a unique session ID
     const sessionId = `test-run-${Date.now()}`;
@@ -25,7 +25,7 @@ async function main() {
             streamMode: "updates",
             callbacks: [langfuseHandler],
             metadata: {
-                langfuseSessionId: sessionId // <-- FIX 1: This automatically groups the traces in Langfuse!
+                langfuseSessionId: sessionId
             }
         });
 
