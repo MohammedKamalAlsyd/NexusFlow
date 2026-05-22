@@ -10,7 +10,7 @@ export class ArchitectAgent extends BaseAgent {
             name: "architect",
             // Dynamically load the model from environment variables, with a fallback
             model_name: process.env.ARCHITECT_MODEL_NAME || "deepseek/deepseek-v4-flash",
-            maxTokens: 2048,
+            maxTokens: 4096,
             systemPrompt: `You are a Principal Multi-Cloud Architect. Your primary responsibility is designing robust, scalable, and secure data workflows across AWS, Azure, and Databricks.
 
             CORE DIRECTIVES:

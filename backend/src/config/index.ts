@@ -15,7 +15,7 @@ export interface Preferences {
 export class SettingManager {
   private _version: string = "1.0.0";
   private _allowList: { files: AllowlistRule[]; commands: AllowlistRule[] } = { files: [], commands: [] };
-  private _preferences: Preferences = { confirmationMode: "auto" };
+  private _preferences: Preferences = { confirmationMode: "manual" };
   private configPath: string;
   private _backupDir: string = path.resolve(process.cwd(), ".backups");
 
@@ -69,7 +69,7 @@ export class SettingManager {
 
   // --- BACKUP DIRECTORY ---
   get backupDir() { return this._backupDir; }
-  async setbackupDir(path: string): Promise<void> {
+  async setbackupDir(path:string): Promise<void> {
     this._backupDir = path;
     await this.save();
   }

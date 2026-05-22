@@ -3,6 +3,7 @@ import path from "node:path";
 
 export interface SafetyContext {
     projectRoot: string;
+    workspaceRoot: string;
     allowedPaths: string[];
     blockedPatterns: string[];
     blockedCommands: string[];
@@ -14,6 +15,7 @@ export interface SafetyContext {
 const DEFAULT_CONTEXT: SafetyContext = {
     projectRoot: process.cwd(),
     allowedPaths: ["CodeSandBox"], // "." means allow all inside project root. Change to ["CodeSandBox"] if strictly isolated.
+    workspaceRoot: path.resolve(process.cwd(), "CodeSandBox"), 
     blockedPatterns: ["node_modules", "\\.git", "dist", "build"],
     blockedCommands: ["rm -rf", "sudo", "shutdown", "reboot", "kill", "passwd", "format"],
     requiredConfirmation: true,

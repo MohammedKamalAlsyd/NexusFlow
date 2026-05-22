@@ -10,7 +10,7 @@ export class ETLCoderAgent extends BaseAgent {
             name: "etl-coder",
             // Dynamically load the model from environment variables, with a fallback
             model_name: process.env.ETL_MODEL_NAME || "claude-3-5-sonnet",
-            maxTokens: 8000,
+            maxTokens: 8192,
             systemPrompt: `You are an Elite Data Engineer. Your ONLY job is to write high-performance PySpark/Glue ETL code.
 
             CORE DIRECTIVES:

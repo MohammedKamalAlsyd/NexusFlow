@@ -10,6 +10,7 @@ export class IaCCoderAgent extends BaseAgent {
             name: "iac-coder",
             // Dynamically load the model from environment variables, with a fallback
             model_name: process.env.IAC_MODEL_NAME || "deepseek/deepseek-v4-flash",
+            maxTokens: 8192,
             systemPrompt: `You are a Principal Pulumi IaC Engineer. 
 
             CORE DIRECTIVES:

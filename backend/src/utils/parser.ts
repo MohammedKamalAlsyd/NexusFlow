@@ -47,9 +47,14 @@ export class ParserUtils {
 
         let match: RegExpExecArray | null;
         while ((match = regex.exec(text)) !== null) {
-            // Use optional chaining and nullish coalescing to satisfy TypeScript 2532/2538
             const filename = match[1] ?? "";
-            const body = match[2]?.trim() ?? "";
+            let body = match[2]?.trim() ?? "";
+
+            // This matches "```typescript", "```yaml", "```json", etc. at the start, and "```" at the end.
+            body = body
+                .replace(/^```[a-zA-Z0-9-]*\s*\r?\n/i, "") // Remove opening ```lang
+                .replace(/\r?\n```\s*$/i, "")              // Remove closing ```
+                .trim();
 
             // Only add to artifacts if filename is valid (not empty)
             if (filename) {
