@@ -1,7 +1,6 @@
 import { AgentState } from "@/graph/state.js";
 import { ArchitectAgent } from "@/agents/roles/ArchitectAgent.js";
-import { ETLCoderAgent } from "@/agents/roles/ETLCoderAgent.js";
-import { IaCCoderAgent } from "@/agents/roles/IaCCoderAgent.js";
+import { PipelineCoderAgent } from "@/agents/roles/PipelineCoderAgent.js";
 import { ValidatorAgent } from "@/agents/roles/ValidatorAgent.js";
 import { CloudExplorerAgent } from "@/agents/roles/CloudExplorerAgent.js";
 import { DataOpsAgent } from "@/agents/roles/DataOpsAgent.js";
@@ -14,8 +13,7 @@ import z from "zod";
 // Instantiate all agents
 const explorer = new CloudExplorerAgent();
 const architect = new ArchitectAgent();
-const etlCoder = new ETLCoderAgent();
-const iacCoder = new IaCCoderAgent();
+const pipelineCoder = new PipelineCoderAgent();
 const validator = new ValidatorAgent();
 const dataOps = new DataOpsAgent();
 
@@ -103,42 +101,28 @@ export const architectNode = async (state: typeof AgentState.State, config?: Run
 };
 
 /**
- * NODE 3: ETL Coder
- * Generates data transformation scripts.
+ * NODE 3: Pipeline Coder
+ * Generates BOTH data transformation scripts AND Pulumi infrastructure code.
  */
-export const etlCoderNode = async (state: typeof AgentState.State, config?: RunnableConfig) => {
-    console.log("👨‍💻 [ETL CODER]: Writing data transformation logic...");
-    const prompt = state.validationErrors
-        ? `Fix these previous errors: ${state.validationErrors}. Remember to properly escape JSON strings!`
-        : `Generate ETL scripts for this plan: ${JSON.stringify(state.cloudPlan)}. 
-           Use existing resources: ${JSON.stringify(state.environmentContext)}.`;
-
-    return await runAgentNode(etlCoder, prompt, "etl-coding", state, config);
-};
-
-/**
- * NODE 4: IaC Coder
- * Generates Pulumi infrastructure code.
- */
-export const iacCoderNode = async (state: typeof AgentState.State, config?: RunnableConfig) => {
-    console.log("🏗️  [IaC CODER]: Generating Pulumi infrastructure code...");
-    const prompt = `Generate Pulumi code for this plan: ${JSON.stringify(state.cloudPlan)}.
+export const pipelineCoderNode = async (state: typeof AgentState.State, config?: RunnableConfig) => {
+    console.log("👨‍💻 [PIPELINE CODER]: Writing Full-Stack ETL & IaC code...");
+    const prompt = `Generate the full pipeline (ETL scripts + Pulumi IaC) for this plan: ${JSON.stringify(state.cloudPlan)}.
     Strategy: '${state.executionStrategy}'.
-    Reference these artifacts: ${JSON.stringify(Object.keys(state.artifacts))}.
+    Use existing resources: ${JSON.stringify(state.environmentContext)}.
     
     ${state.validationErrors ? `
-    ATTENTION: The previous deployment failed with these console errors:
+    ATTENTION: The previous deployment OR validation failed with these errors:
     -----
     ${state.validationErrors}
     -----
-    If this is a code syntax error or Pulumi logical error, fix the code and output the <artifact> tags. 
-    If this is a SYSTEM, AUTH, or ENVIRONMENT error (e.g. missing API keys, Pulumi access tokens, missing permissions) that you CANNOT fix by changing the code, output ONLY: <abort>Explanation of the unfixable system error</abort>` : ""}`;
+    Fix the errors in your Python scripts or index.ts and output ALL required <artifact> tags. 
+    If this is a SYSTEM error you CANNOT fix by changing code, output ONLY: <abort>Explanation</abort>` : ""}`;
 
-    return await runAgentNode(iacCoder, prompt, "iac-coding", state, config);
+    return await runAgentNode(pipelineCoder, prompt, "pipeline-coding", state, config);
 };
 
 /**
- * NODE 5: Validator
+ * NODE 4: Validator
  * Audits all generated artifacts.
  */
 export const validatorNode = async (state: typeof AgentState.State, config?: RunnableConfig) => {
@@ -173,7 +157,7 @@ export const validatorNode = async (state: typeof AgentState.State, config?: Run
 };
 
 /**
- * NODE 6: Deployer (The "Muscle")
+ * NODE 5: Deployer (The "Muscle")
  * Executes the validated plan using Pulumi.
  */
 export const deployerNode = async (state: typeof AgentState.State, config?: RunnableConfig) => {

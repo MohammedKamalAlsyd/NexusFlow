@@ -1,6 +1,7 @@
 import yaml from "js-yaml";
 export type OutputFormat = "json" | "yaml" | "text";
 import * as fs from 'fs';
+import { jsonrepair } from 'jsonrepair';
 
 
 /**
@@ -102,8 +103,21 @@ export class ParserUtils {
     private static parseByFormat(text: string, format: OutputFormat) {
         try {
             if (format === "json") {
-                // Remove common LLM artifacts like trailing commas or non-standard comments if needed
-                return JSON.parse(text);
+                try {
+                    // 1. Try standard JSON parse for maximum speed
+                    return JSON.parse(text);
+                } catch (jsonError) {
+                    console.warn("⚠️ [ParserUtils] Standard JSON.parse failed. Attempting jsonrepair...");
+                    try {
+                        // 2. 🛡️ Use jsonrepair to intelligently fix bad escapes, trailing commas, missing quotes, etc.
+                        const repairedText = jsonrepair(text);
+                        return JSON.parse(repairedText);
+                    } catch (repairError) {
+                        // 3. Fallback to YAML if it's completely destroyed (extremely rare now)
+                        console.warn("⚠️ [ParserUtils] jsonrepair failed. Attempting YAML fallback...");
+                        return yaml.load(text);
+                    }
+                }
             }
 
             if (format === "yaml") {

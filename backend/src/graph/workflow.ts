@@ -3,8 +3,7 @@ import { AgentState } from "@/graph/state.js";
 import {
     explorerNode,
     architectNode,
-    etlCoderNode,
-    iacCoderNode,
+    pipelineCoderNode,
     validatorNode,
     deployerNode,
     dataOpsNode
@@ -26,39 +25,25 @@ const routeAfterPlanning = (state: typeof AgentState.State) => {
         return "data-ops";
     }
     // Both GREENFIELD and BROWNFIELD strategies require code generation.
-    return "etl-coder";
+    return "pipeline-coder";
 };
 
 /**
- * ROUTER 2: Checks if ETL Code successfully parsed or if the agent aborted.
+ * ROUTER 2: Checks if pipeline code successfully parsed or if the agent aborted.
  */
-const routeAfterEtl = (state: typeof AgentState.State) => {
+const routeAfterCoding = (state: typeof AgentState.State) => {
     if (state.deploymentStatus === "FATAL_ERROR") return END;
 
     if (state.validationErrors) {
-        console.warn(`⚠️ [ROUTER]: ETL Coder failed to parse. Looping back to fix output formatting.`);
-        return "etl-coder";
-    }
-
-    return "iac-coder";
-};
-
-/**
- * ROUTER 3: Checks if IaC Code successfully parsed or if the agent aborted.
- */
-const routeAfterIac = (state: typeof AgentState.State) => {
-    if (state.deploymentStatus === "FATAL_ERROR") return END;
-
-    if (state.validationErrors) {
-        console.warn(`⚠️ [ROUTER]: IaC Coder failed to parse. Looping back to fix output formatting.`);
-        return "iac-coder";
+        console.warn(`⚠️ [ROUTER]: Coder failed to parse. Looping back to fix output formatting.`);
+        return "pipeline-coder";
     }
 
     return "validator";
 };
 
 /**
- * ROUTER 4: Handles validation success or failure.
+ * ROUTER 3: Handles validation success or failure.
  */
 const routeAfterValidation = (state: typeof AgentState.State) => {
     if (state.deploymentStatus === "FATAL_ERROR") return END;
@@ -68,8 +53,8 @@ const routeAfterValidation = (state: typeof AgentState.State) => {
             console.error(`❌ [ROUTER]: Max validation retries reached. Halting.`);
             return END;
         }
-        console.warn(`⚠️ [ROUTER]: Validation Failed. Looping back to Coders.`);
-        return "etl-coder";
+        console.warn(`⚠️ [ROUTER]: Validation Failed. Looping back to Coder.`);
+        return "pipeline-coder";
     }
 
     console.log(`✅ [ROUTER]: Validation Passed. Proceeding to Deployment.`);
@@ -77,7 +62,7 @@ const routeAfterValidation = (state: typeof AgentState.State) => {
 };
 
 /**
- * ROUTER 5: Handles deployment success or failure.
+ * ROUTER 4: Handles deployment success or failure.
  */
 const routeAfterDeployment = (state: typeof AgentState.State) => {
     if (state.deploymentStatus === "FATAL_ERROR") return END;
@@ -87,8 +72,8 @@ const routeAfterDeployment = (state: typeof AgentState.State) => {
             console.error(`❌ [ROUTER]: Max deployment retries reached. Halting.`);
             return END;
         }
-        console.warn(`⚠️ [ROUTER]: Deployment Failed. Looping back to IaC Coder for correction.`);
-        return "iac-coder";
+        console.warn(`⚠️ [ROUTER]: Deployment Failed. Looping back to Coder.`);
+        return "pipeline-coder";
     }
 
     console.log(`🚀 [ROUTER]: Pipeline Successfully Deployed!`);
@@ -103,8 +88,7 @@ const workflow = new StateGraph(AgentState)
     // Register all nodes
     .addNode("explorer", explorerNode)
     .addNode("architect", architectNode)
-    .addNode("etl-coder", etlCoderNode)
-    .addNode("iac-coder", iacCoderNode)
+    .addNode("pipeline-coder", pipelineCoderNode)
     .addNode("validator", validatorNode)
     .addNode("deployer", deployerNode)
     .addNode("data-ops", dataOpsNode)
@@ -119,7 +103,7 @@ const workflow = new StateGraph(AgentState)
         routeAfterPlanning,
         {
             "data-ops": "data-ops",
-            "etl-coder": "etl-coder",
+            "pipeline-coder": "pipeline-coder",
         }
     )
 
@@ -127,28 +111,22 @@ const workflow = new StateGraph(AgentState)
     .addEdge("data-ops", END)
 
     // Code Generation Branch (with self-healing loops for parsing errors)
-    .addConditionalEdges("etl-coder", routeAfterEtl, {
-        "etl-coder": "etl-coder",
-        "iac-coder": "iac-coder",
-        [END]: END
-    })
-
-    .addConditionalEdges("iac-coder", routeAfterIac, {
-        "iac-coder": "iac-coder",
+    .addConditionalEdges("pipeline-coder", routeAfterCoding, {
+        "pipeline-coder": "pipeline-coder",
         "validator": "validator",
         [END]: END
     })
 
     // Validation self-correction loop
     .addConditionalEdges("validator", routeAfterValidation, {
-        "etl-coder": "etl-coder", // Loop back to fix code
+        "pipeline-coder": "pipeline-coder", // Loop back to fix code
         "deployer": "deployer",   // Proceed
         [END]: END                // Halt on max retries or fatal error
     })
 
     // Deployment self-correction loop
     .addConditionalEdges("deployer", routeAfterDeployment, {
-        "iac-coder": "iac-coder", // Loop back to fix IaC
+        "pipeline-coder": "pipeline-coder", // Loop back to fix code
         [END]: END                // Success, fatal error, or halt
     });
 
