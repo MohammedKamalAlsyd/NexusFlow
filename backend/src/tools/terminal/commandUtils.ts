@@ -11,17 +11,20 @@ export const executeCommandTool = tool(
     async ({ command }) => {
         const context = safetyManager.getContext();
 
+        // Extract the actual command, ignoring directory changes (e.g., "cd /workspace && npm install" -> "npm install")
+        const actualCommand = command.includes("&&") ? command.split("&&").pop()?.trim() || command : command;
+
         // 1. Safety Check: Block commands defined in safety context
         const isBlocked = context.blockedCommands.some((blocked) =>
-            command.toLowerCase().includes(blocked.toLowerCase())
+            actualCommand.toLowerCase().includes(blocked.toLowerCase())
         );
 
         if (isBlocked) {
-            return `Access Denied: The command '${command}' is blocked by security policy.`;
+            return `Access Denied: The command '${actualCommand}' is blocked by security policy.`;
         }
 
-        // 2. Human-in-the-loop: Always ask before executing shell commands
-        const approved = await askForPermission("execute", command);
+        // 2. Human-in-the-loop: Ask before executing using the clean command name
+        const approved = await askForPermission("execute", actualCommand);
         if (!approved) return "Operation cancelled by user.";
 
         try {

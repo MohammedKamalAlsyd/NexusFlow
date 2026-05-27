@@ -1,18 +1,43 @@
 {
   "mcpServers": {
-    "github": {
+    "aws-data-processing": {
       "command": "docker",
-      "args": ["run", "-i", "--rm", "mcp/github"],
-      "env": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "$GITHUB_TOKEN"
-      }
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID",
+        "-e",
+        "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY",
+        "-e",
+        "AWS_REGION=$AWS_REGION",
+        "mcp/aws-dataprocessing-mcp-server"
+      ]
     },
-    "neon": {
+    "aws-documentation": {
       "command": "docker",
-      "args": ["run", "-i", "--rm", "mcp/neon"],
-      "env": {
-        "DATABASE_URL": "$DATABASE_URL"
-      }
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "public.ecr.aws/awslabs-mcp/awslabs/aws-documentation-mcp-server:latest"
+      ]
+    },
+    "azure-catalog": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "AZURE_TENANT_ID=$AZURE_TENANT_ID",
+        "-e",
+        "AZURE_CLIENT_ID=$AZURE_CLIENT_ID",
+        "-e",
+        "AZURE_CLIENT_SECRET=$AZURE_CLIENT_SECRET",
+        "mcp/docker-mcp-catalog"
+      ]
     }
   }
 }

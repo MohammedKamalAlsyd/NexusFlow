@@ -1,27 +1,22 @@
 import { DynamicStructuredTool } from "@langchain/core/tools";
 import { readFileTool, writeFileTool, deleteFileTool, listFilesTool } from "./fs/fileSystem.js";
-import { editFileTool, restoreFileTool } from "./fs/editWithDiff.js";
 import { searchContentTool } from "./fs/searchFiles.js";
 import { executeCommandTool } from "./terminal/commandUtils.js";
 import { webSearchTool } from "./web/searchTool.js";
-import { cloudDiscoveryTools } from "./cloud/index.js";
 
-export const localFsTools = [readFileTool, writeFileTool, deleteFileTool, listFilesTool, editFileTool, restoreFileTool, searchContentTool];
+export const localFsTools = [readFileTool, writeFileTool, deleteFileTool, listFilesTool, searchContentTool];
 export const localTerminalTools = [executeCommandTool];
 export const webTools = [webSearchTool];
 
-// 1. Updated Roles
+// 1. Updated Lean Roles
 export type AgentRole =
-    | "software-engineer"
-    | "data-ops"
-    | "devops"
-    | "supervisor"
-    | "cloud-explorer"
-    | "pipeline-coder";
+    | "architect"
+    | "pipeline-coder"
+    | "data-ops";
 
 /**
  * A dynamic registry that combines local code tools, terminal tools,
- * and remote cloud discovery/MCP tools.
+ * and remote MCP tools (AWS/Azure via Docker).
  */
 export class ToolManager {
     private tools: Map<string, DynamicStructuredTool<any>>;
@@ -35,7 +30,6 @@ export class ToolManager {
         const allLocalTools = [
             ...localFsTools,
             ...localTerminalTools,
-            ...cloudDiscoveryTools,
             ...webTools
         ];
         for (const tool of allLocalTools) {
@@ -55,41 +49,32 @@ export class ToolManager {
         const allTools = Array.from(this.tools.values());
 
         switch (role) {
+            case "architect":
+                // Architect gets ALL discovery, catalog, and list tools from the MCP servers.
+                // NO code execution or file system tools.
+                return allTools.filter(t =>
+                    t.name.includes("list") ||
+                    t.name.includes("get_") ||
+                    t.name.includes("check_") ||
+                    t.name.includes("catalog")
+                );
+
             case "pipeline-coder":
-                // The pipeline coder gets File System, Terminal, and Web Search!
+                // Coder gets File System, Terminal, Web Search, and AWS Documentation.
                 return allTools.filter(t =>
                     localFsTools.some(local => local.name === t.name) ||
                     localTerminalTools.some(local => local.name === t.name) ||
-                    webTools.some(web => web.name === t.name)
-                );
-
-            case "software-engineer":
-                return allTools.filter(t =>
-                    localFsTools.some(local => local.name === t.name) ||
-                    localTerminalTools.some(local => local.name === t.name)
+                    webTools.some(web => web.name === t.name) ||
+                    t.name.includes("documentation")
                 );
 
             case "data-ops":
-                // MCP Tools + Cloud Discovery Tools
+                // DataOps gets MCP DB querying and analysis tools, but no local FS.
                 return allTools.filter(t =>
                     !localFsTools.some(local => local.name === t.name) &&
-                    !localTerminalTools.some(local => local.name === t.name)
+                    !localTerminalTools.some(local => local.name === t.name) &&
+                    !t.name.includes("documentation")
                 );
-
-            case "devops":
-                return allTools.filter(t =>
-                    t.name.includes("github") ||
-                    localTerminalTools.some(local => local.name === t.name)
-                );
-
-            case "cloud-explorer":
-                // Specifically returns the cloud discovery tools
-                return allTools.filter(t =>
-                    cloudDiscoveryTools.some(cloud => cloud.name === t.name)
-                );
-
-            case "supervisor":
-                return [];
 
             default:
                 return [];
