@@ -1,16 +1,14 @@
 import { StateGraph, START, END } from "@langchain/langgraph";
 import { AgentState } from "@/graph/state.js";
 import {
-    explorerNode,
     architectNode,
     pipelineCoderNode,
-    validatorNode,
     deployerNode,
     dataOpsNode
 } from "@/graph/nodes.js";
 import { fileURLToPath } from "node:url";
 
-const MAX_RETRIES = 3;
+const MAX_RETRIES = process.env.MAX_DEPLOYMENT_RETRIES ? parseInt(process.env.MAX_DEPLOYMENT_RETRIES) : 3;
 
 // ==========================================
 // CONDITIONAL ROUTING LOGIC
@@ -20,63 +18,34 @@ const MAX_RETRIES = 3;
  * ROUTER 1: Reads the Architect's strategy and branches the graph.
  */
 const routeAfterPlanning = (state: typeof AgentState.State) => {
+    if (state.deploymentStatus === "FATAL_ERROR") return END;
+
     console.log(`🔀 [ROUTER]: Strategy is '${state.executionStrategy}'. Deciding next step.`);
     if (state.executionStrategy === "DATA_ANALYSIS") {
         return "data-ops";
     }
+
     // Both GREENFIELD and BROWNFIELD strategies require code generation.
     return "pipeline-coder";
 };
 
 /**
- * ROUTER 2: Checks if pipeline code successfully parsed or if the agent aborted.
- */
-const routeAfterCoding = (state: typeof AgentState.State) => {
-    if (state.deploymentStatus === "FATAL_ERROR") return END;
-
-    if (state.validationErrors) {
-        console.warn(`⚠️ [ROUTER]: Coder failed to parse. Looping back to fix output formatting.`);
-        return "pipeline-coder";
-    }
-
-    return "validator";
-};
-
-/**
- * ROUTER 3: Handles validation success or failure.
- */
-const routeAfterValidation = (state: typeof AgentState.State) => {
-    if (state.deploymentStatus === "FATAL_ERROR") return END;
-
-    if (state.validationErrors) {
-        if (state.retryCount >= MAX_RETRIES) {
-            console.error(`❌ [ROUTER]: Max validation retries reached. Halting.`);
-            return END;
-        }
-        console.warn(`⚠️ [ROUTER]: Validation Failed. Looping back to Coder.`);
-        return "pipeline-coder";
-    }
-
-    console.log(`✅ [ROUTER]: Validation Passed. Proceeding to Deployment.`);
-    return "deployer";
-};
-
-/**
- * ROUTER 4: Handles deployment success or failure.
+ * ROUTER 2: Checks if Pulumi deployed successfully or failed.
+ * Acts as the self-correction loop back to the Coder.
  */
 const routeAfterDeployment = (state: typeof AgentState.State) => {
     if (state.deploymentStatus === "FATAL_ERROR") return END;
 
     if (state.deploymentStatus === "FAILED") {
         if (state.retryCount >= MAX_RETRIES) {
-            console.error(`❌ [ROUTER]: Max deployment retries reached. Halting.`);
+            console.error(`❌ [ROUTER]: Max deployment retries (${MAX_RETRIES}) reached. Halting workflow.`);
             return END;
         }
-        console.warn(`⚠️ [ROUTER]: Deployment Failed. Looping back to Coder.`);
+        console.warn(`⚠️ [ROUTER]: Deployment Failed. Looping back to Coder to fix syntax/logic errors.`);
         return "pipeline-coder";
     }
 
-    console.log(`🚀 [ROUTER]: Pipeline Successfully Deployed!`);
+    console.log(`🚀 [ROUTER]: Pipeline Successfully Deployed! Workflow Complete.`);
     return END;
 };
 
@@ -85,50 +54,41 @@ const routeAfterDeployment = (state: typeof AgentState.State) => {
 // ==========================================
 
 const workflow = new StateGraph(AgentState)
-    // Register all nodes
-    .addNode("explorer", explorerNode)
+    // Register the 3 core nodes + DataOps
     .addNode("architect", architectNode)
     .addNode("pipeline-coder", pipelineCoderNode)
-    .addNode("validator", validatorNode)
     .addNode("deployer", deployerNode)
     .addNode("data-ops", dataOpsNode)
 
-    // Define edges
-    .addEdge(START, "explorer")
-    .addEdge("explorer", "architect")
+    // Flow starts at the Architect (Discovery + Planning)
+    .addEdge(START, "architect")
 
-    // Dynamic Branch based on strategy
+    // Branch based on Architect's Strategy
     .addConditionalEdges(
         "architect",
         routeAfterPlanning,
         {
             "data-ops": "data-ops",
             "pipeline-coder": "pipeline-coder",
+            [END]: END
         }
     )
 
-    // Define the 'Data Analysis' branch (terminates)
+    // The 'Data Analysis' branch terminates immediately after running queries
     .addEdge("data-ops", END)
 
-    // Code Generation Branch (with self-healing loops for parsing errors)
-    .addConditionalEdges("pipeline-coder", routeAfterCoding, {
-        "pipeline-coder": "pipeline-coder",
-        "validator": "validator",
-        [END]: END
-    })
-
-    // Validation self-correction loop
-    .addConditionalEdges("validator", routeAfterValidation, {
-        "pipeline-coder": "pipeline-coder", // Loop back to fix code
-        "deployer": "deployer",   // Proceed
-        [END]: END                // Halt on max retries or fatal error
-    })
+    // Code Generation always proceeds straight to Deployment (Pulumi handles validation)
+    .addEdge("pipeline-coder", "deployer")
 
     // Deployment self-correction loop
-    .addConditionalEdges("deployer", routeAfterDeployment, {
-        "pipeline-coder": "pipeline-coder", // Loop back to fix code
-        [END]: END                // Success, fatal error, or halt
-    });
+    .addConditionalEdges(
+        "deployer",
+        routeAfterDeployment,
+        {
+            "pipeline-coder": "pipeline-coder", // Loop back to fix code
+            [END]: END                          // Success, fatal error, or halt
+        }
+    );
 
 // Compile the final, runnable graph
 export const appGraph = workflow.compile();
@@ -136,9 +96,6 @@ export const appGraph = workflow.compile();
 // ==========================================
 // CLI EXECUTION (DRAW GRAPH)
 // ==========================================
-// This acts like `if __name__ == "__main__":` in Python. 
-// It will run only if you execute this file directly (e.g. `npx tsx src/graph/workflow.ts`)
-
 const isMainModule = process.argv[1] === fileURLToPath(import.meta.url);
 
 if (isMainModule) {

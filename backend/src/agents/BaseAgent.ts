@@ -3,20 +3,11 @@ import { DynamicStructuredTool } from "@langchain/core/tools";
 import { StateGraph, START, END, MessagesAnnotation } from "@langchain/langgraph";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 import { AIMessage } from "@langchain/core/messages";
-import type { RunnableConfig } from "@langchain/core/runnables";
 import * as dotenv from "dotenv";
 import path from "node:path";
-import type { AgentResponse } from "@/types/agent.types.js";
-
+import type { AgentConfig } from "@/types/index.js";
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 
-export interface AgentConfig {
-    name: string;
-    model_name: string;
-    systemPrompt: string;
-    temperature?: number;
-    maxTokens?: number;
-}
 
 export class BaseAgent {
     public readonly name: string;
@@ -27,7 +18,7 @@ export class BaseAgent {
     constructor(config: AgentConfig) {
         this.name = config.name;
         this.systemPrompt = config.systemPrompt;
-        this.model_name = config.model_name
+        this.model_name = config.model_name;
 
         // 1. Load and Validate Env Variables
         const apiKey = String(process.env.OPENROUTER_API_KEY || "");
@@ -64,42 +55,7 @@ export class BaseAgent {
         });
     }
 
-    /**
-     * Executes a raw string query and returns a strictly typed AgentResponse.
-     * Useful for direct one-off questions without tools.
-     */
-    public async invokeRaw(input: string, config?: RunnableConfig): Promise<AgentResponse> {
-        try {
-            const response = await this.llm.invoke([
-                { role: "system", content: this.systemPrompt },
-                { role: "user", content: input },
-            ], config) as any;
 
-            const meta = response.response_metadata;
-            const usage = response.usage_metadata;
-
-            return {
-                content: String(response.content),
-                usage: {
-                    inputTokens: usage?.input_tokens ?? 0,
-                    outputTokens: usage?.output_tokens ?? 0,
-                    totalTokens: usage?.total_tokens ?? 0,
-                    inputDetails: usage?.input_token_details,
-                    outputDetails: usage?.output_token_details,
-                },
-                metadata: {
-                    id: (response.id as string) ?? "",
-                    finishReason: meta?.finish_reason ? String(meta.finish_reason) : null,
-                    modelProvider: meta?.model_provider ? String(meta.model_provider) : null,
-                    modelName: meta?.model_name ? String(meta.model_name) : this.llm.model,
-                    raw: response,
-                },
-            };
-        } catch (error) {
-            console.error(`Error in ${this.name} invokeRaw:`, error);
-            throw new Error(`Agent [${this.name}] failed: ${error instanceof Error ? error.message : String(error)}`);
-        }
-    }
     /**
      * Returns a LangGraph-compatible worker agent equipped with tools.
      * Manually constructs the StateGraph to replace the deprecated createReactAgent.
