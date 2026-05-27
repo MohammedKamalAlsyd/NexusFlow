@@ -69,44 +69,36 @@ export const architectNode = async (state: typeof AgentState.State, config?: Run
  * Scaffolds the workspace and uses tools to write ETL/Pulumi scripts.
  */
 export const pipelineCoderNode = async (state: typeof AgentState.State, config?: RunnableConfig) => {
-    console.log("👨‍💻 [PIPELINE CODER]: Using tools to write ETL & IaC code...");
+    console.log("👨‍💻 [PIPELINE CODER]: Designing environment and writing pure Python code...");
 
-    // 1. Establish Secure Workspace Path and Auto-Scaffold Boilerplate
     let currentWorkspace = state.workspacePath;
     if (!currentWorkspace) {
         const context = safetyManager.getContext();
         currentWorkspace = path.resolve(context.workspaceRoot, `nexusflow-run-${Date.now()}`);
         await fs.mkdir(currentWorkspace, { recursive: true });
 
-        console.log("📦 Auto-scaffolding Pulumi TypeScript boilerplate...");
+        console.log("📦 Auto-scaffolding minimal Python Pulumi configuration...");
 
-        const packageJson = {
-            name: "nexusflow-deployment",
-            main: "index.ts",
-            devDependencies: { "@types/node": "^18.0.0", "typescript": "^5.0.0" },
-            dependencies: { "@pulumi/pulumi": "^3.0.0", "@pulumi/aws": "^6.0.0" }
-        };
-        await fs.writeFile(path.join(currentWorkspace, "package.json"), JSON.stringify(packageJson, null, 2));
-
-        const tsconfig = { compilerOptions: { strict: true, target: "es2022", module: "commonjs" } };
-        await fs.writeFile(path.join(currentWorkspace, "tsconfig.json"), JSON.stringify(tsconfig, null, 2));
-
-        const pulumiYaml = `name: nexusflow-deployment\nruntime: nodejs\ndescription: NexusFlow Auto-Generated IaC\n`;
+        // 1. Scaffold Pulumi Python settings (NO tsconfig or package.json!)
+        const pulumiYaml = `name: nexusflow-deployment\nruntime: python\ndescription: NexusFlow Auto-Generated IaC in Python\n`;
         await fs.writeFile(path.join(currentWorkspace, "Pulumi.yaml"), pulumiYaml);
     }
 
     const prompt = `Workspace Path: ${currentWorkspace}
     Cloud Plan: ${state.cloudPlan}
     Strategy: '${state.executionStrategy}'
-    Existing Resources: ${JSON.stringify(state.environmentContext)}
     
     ${state.validationErrors ? `
-    ⚠️ PULUMI DEPLOYMENT FAILED with these errors:
-    -----
+    ⚠️ PULUMI DEPLOYMENT FAILED:
     ${state.validationErrors}
-    -----
-    Use your 'read_file' and 'edit_file' tools to carefully fix the bugs in your code.` :
-            "The workspace already contains package.json, tsconfig.json, and Pulumi.yaml. Use your tools to create index.ts and the required python scripts."}`;
+    Use your tools to diagnose and patch the python files.` :
+            `You are working in a new directory. 
+    
+    INSTRUCTIONS:
+    1. Initialize the environment using 'setup_environment' with type: 'python' and packages: ['pulumi', 'pulumi-aws'].
+    2. Write your Pulumi infrastructure code inside '__main__.py'.
+    3. Write your PySpark ETL script (e.g., 'etl_job.py').
+    4. Do not output markdown files. Execute your steps and finish.`}`;
 
     try {
         const runner = pipelineCoder.getRunnable();
@@ -115,14 +107,14 @@ export const pipelineCoderNode = async (state: typeof AgentState.State, config?:
         return {
             currentStep: "pipeline-coding",
             workspacePath: currentWorkspace,
-            validationErrors: null, // Clear previous errors if successful
+            validationErrors: null,
             messages: response.messages
         };
     } catch (error: any) {
-        console.warn(`⚠️ [PIPELINE-CODER]: Agent execution failed.`);
         return {
             currentStep: "pipeline-coding-failed",
-            validationErrors: `Agent logic failed: ${error.message}`
+            validationErrors: `Agent logic failed: ${error.message}`,
+            workspacePath: currentWorkspace
         };
     }
 };
@@ -134,6 +126,16 @@ export const pipelineCoderNode = async (state: typeof AgentState.State, config?:
 export const deployerNode = async (state: typeof AgentState.State, config?: RunnableConfig) => {
     console.log(`\n📦 [DEPLOYER]: Running Pulumi in ${state.workspacePath}...`);
     const deployer = new PulumiService(state.workspacePath);
+
+    const wsPath = state.workspacePath;
+    if (!wsPath || wsPath.trim() === '') {
+        return {
+            currentStep: "deploying-failed",
+            deploymentStatus: "FAILED",
+            validationErrors: "Workspace path is empty – cannot deploy.",
+            workspacePath: wsPath,
+        };
+    }
 
     try {
         const result = await deployer.deploy();

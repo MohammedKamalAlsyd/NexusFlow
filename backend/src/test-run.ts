@@ -26,7 +26,8 @@ async function main() {
             callbacks: [langfuseHandler],
             metadata: {
                 langfuseSessionId: sessionId
-            }
+            },
+            recursionLimit: 50
         });
 
         for await (const chunk of stream) {

@@ -1,3 +1,4 @@
+// backend/src/tools/fs/fileSystem.ts
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import fs from "node:fs/promises";
@@ -5,78 +6,114 @@ import path from "node:path";
 import { validateFileOperation } from "@/safety/pathValidator.js";
 import { askForPermission } from "@/safety/interactivity.js";
 
-
-// --- READ FILE ---
+// --- READ MULTIPLE FILES ---
 export const readFileTool = tool(
-    async ({ filePath }) => {
-        const safety = await validateFileOperation("read", filePath);
-        if (!safety.safe) return `Access Denied: ${safety.reason}`;
+    async ({ filePaths }) => {
+        const results: string[] = [];
 
-        try {
-            const content = await fs.readFile(path.resolve(filePath), "utf-8");
-            return content || "[File is empty]";
-        } catch (error: any) {
-            return `Failed to read file: ${error.message}`;
+        for (const filePath of filePaths) {
+            const safety = await validateFileOperation("read", filePath);
+            if (!safety.safe) {
+                results.push(`[${filePath}]: Access Denied - ${safety.reason}`);
+                continue;
+            }
+
+            try {
+                const content = await fs.readFile(path.resolve(filePath), "utf-8");
+                results.push(`--- BEGIN ${filePath} ---\n${content || "[File is empty]"}\n--- END ${filePath} ---`);
+            } catch (error: any) {
+                results.push(`[${filePath}]: Error - ${error.message}`);
+            }
         }
+
+        return results.join("\n\n");
     },
     {
-        name: "read_file",
-        description: "Reads the content of a file. Use this to inspect code before modifying.",
-        schema: z.object({ filePath: z.string().describe("Path of the file to read") }),
-    }
-)
-
-
-// --- WRITE/OVERWRITE FILE ---
-export const writeFileTool = tool(
-    async ({ filePath, content }) => {
-        const safety = await validateFileOperation("write", filePath);
-        if (!safety.safe) return `Access Denied: ${safety.reason}`;
-
-        const approved = await askForPermission("write", filePath);
-        if (!approved) return "Operation cancelled by user.";
-
-        try {
-            const resolvedPath = path.resolve(filePath);
-            await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
-            await fs.writeFile(resolvedPath, content, "utf-8");
-            return `Successfully wrote to ${filePath}`;
-        } catch (error: any) {
-            return `Failed to write file: ${error.message}`;
-        }
-    },
-    {
-        name: "write_file",
-        description: "Creates or completely overwrites a file. For minor changes, use edit_file instead.",
+        name: "read_files",
+        description: "Reads the content of one or multiple files.",
         schema: z.object({
-            filePath: z.string(),
-            content: z.string().describe("The full content to write to the file"),
+            filePaths: z.array(z.string()).describe("Array of file paths to read")
         }),
     }
 );
 
-// --- DELETE FILE ---
-export const deleteFileTool = tool(
-    async ({ filePath }) => {
-        const safety = await validateFileOperation("delete", filePath);
-        if (!safety.safe) return `Access Denied: ${safety.reason}`;
+// --- WRITE MULTIPLE FILES ---
+export const writeFileTool = tool(
+    async ({ files }) => {
+        // 1. Validate paths for all files before making any changes
+        for (const file of files) {
+            const safety = await validateFileOperation("write", file.filePath);
+            if (!safety.safe) {
+                return `Access Denied for ${file.filePath}: ${safety.reason}. No files were written.`;
+            }
+        }
 
-        const approved = await askForPermission("delete", filePath);
+        // 2. Ask user for permission ONCE for the entire batch
+        const fileNames = files.map(f => path.basename(f.filePath)).join(", ");
+        const approved = await askForPermission("write", `Batch Write (${files.length} files): [${fileNames}]`);
         if (!approved) return "Operation cancelled by user.";
 
-        try {
-            await fs.unlink(path.resolve(filePath));
-            return `Successfully deleted ${filePath}`;
-        } catch (error: any) {
-            return `Failed to delete file: ${error.message}`;
+        // 3. Write all files
+        const results: string[] = [];
+        for (const file of files) {
+            try {
+                const resolvedPath = path.resolve(file.filePath);
+                await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
+                await fs.writeFile(resolvedPath, file.content, "utf-8");
+                results.push(`✅ Successfully wrote ${file.filePath}`);
+            } catch (error: any) {
+                results.push(`❌ Failed to write ${file.filePath}: ${error.message}`);
+            }
         }
+
+        return results.join("\n");
     },
     {
-        name: "delete_file",
-        description: "Deletes a file from the file system.",
-        schema: z.object({ filePath: z.string() }),
+        name: "write_files",
+        description: "Creates or overwrites one or multiple files in a single execution. Use this to scaffold the whole project at once.",
+        schema: z.object({
+            files: z.array(
+                z.object({
+                    filePath: z.string().describe("Path of the file to write"),
+                    content: z.string().describe("The full content to write to the file"),
+                })
+            ).describe("List of files to write"),
+        }),
     }
-)
+);
+
+// --- DELETE MULTIPLE FILES ---
+export const deleteFileTool = tool(
+    async ({ filePaths }) => {
+        for (const filePath of filePaths) {
+            const safety = await validateFileOperation("delete", filePath);
+            if (!safety.safe) return `Access Denied for ${filePath}: ${safety.reason}. No files deleted.`;
+        }
+
+        const fileNames = filePaths.map(f => path.basename(f)).join(", ");
+        const approved = await askForPermission("delete", `Batch Delete: [${fileNames}]`);
+        if (!approved) return "Operation cancelled by user.";
+
+        const results: string[] = [];
+        for (const filePath of filePaths) {
+            try {
+                await fs.unlink(path.resolve(filePath));
+                results.push(`✅ Successfully deleted ${filePath}`);
+            } catch (error: any) {
+                results.push(`❌ Failed to delete ${filePath}: ${error.message}`);
+            }
+        }
+
+        return results.join("\n");
+    },
+    {
+        name: "delete_files",
+        description: "Deletes one or multiple files from the file system.",
+        schema: z.object({
+            filePaths: z.array(z.string()).describe("Array of file paths to delete")
+        }),
+    }
+);
 
 // --- List Files in Directory ---
 export const listFilesTool = tool(
@@ -88,11 +125,7 @@ export const listFilesTool = tool(
             const resolvedPath = path.resolve(dirPath);
             const entries = await fs.readdir(resolvedPath, { withFileTypes: true });
 
-            // Format the output for the LLM: clearly mark directories vs files
-            const fileList = entries.map(entry => {
-                return entry.isDirectory() ? `[DIR]  ${entry.name}` : `[FILE] ${entry.name}`;
-            });
-
+            const fileList = entries.map(entry => entry.isDirectory() ? `[DIR]  ${entry.name}` : `[FILE] ${entry.name}`);
             if (fileList.length === 0) return "Directory is empty.";
 
             return `Listing contents of ${dirPath}:\n${fileList.join("\n")}`;
@@ -102,9 +135,7 @@ export const listFilesTool = tool(
     },
     {
         name: "list_files",
-        description: "Lists all files and directories in the specified path. Use this to explore the project structure.",
-        schema: z.object({
-            dirPath: z.string().describe("The path of the directory to list"),
-        }),
+        description: "Lists all files and directories in the specified path.",
+        schema: z.object({ dirPath: z.string() }),
     }
 );

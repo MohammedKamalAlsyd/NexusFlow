@@ -3,9 +3,10 @@ import { readFileTool, writeFileTool, deleteFileTool, listFilesTool } from "./fs
 import { searchContentTool } from "./fs/searchFiles.js";
 import { executeCommandTool } from "./terminal/commandUtils.js";
 import { webSearchTool } from "./web/searchTool.js";
+import { setupEnvironmentTool } from "./terminal/setupEnv.js";
 
 export const localFsTools = [readFileTool, writeFileTool, deleteFileTool, listFilesTool, searchContentTool];
-export const localTerminalTools = [executeCommandTool];
+export const localTerminalTools = [executeCommandTool, setupEnvironmentTool];
 export const webTools = [webSearchTool];
 
 // 1. Updated Lean Roles

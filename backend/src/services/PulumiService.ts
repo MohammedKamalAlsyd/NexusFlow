@@ -1,15 +1,11 @@
-import fs from "node:fs/promises";
-import path from "node:path";
 import { executeCommandTool } from "@/tools/terminal/commandUtils.js";
-import { safetyManager } from "@/safety/safetyContext.js";
 
 export class PulumiService {
     private workspaceDir: string;
 
-    constructor(projectName: string = "nexusflow-deployment") {
-        // Read the workspace root (CodeSandBox) from our safety settings
-        const context = safetyManager.getContext();
-        this.workspaceDir = path.resolve(context.workspaceRoot, projectName);
+    // Change constructor to accept the absolute path directly from state
+    constructor(absoluteWorkspacePath: string) {
+        this.workspaceDir = absoluteWorkspacePath;
     }
 
     private async runCommand(cmd: string): Promise<string> {
@@ -20,26 +16,15 @@ export class PulumiService {
     }
 
     public async deploy(): Promise<{ success: boolean; logs: string }> {
-        try {
-            // 1. Force Local Mode (fixes your auth token issue permanently)
-            console.log("🔐 Forcing Pulumi to use Local State Backend...");
-            await this.runCommand("pulumi login --local");
+        console.log("🔄 Initializing Pulumi Stack...");
+        // stack init may fail if stack already exists – ignore
+        await this.runCommand("pulumi stack init dev").catch(() => { });
 
-            // 2. Install dependencies (required for TypeScript Pulumi)
-            console.log("📦 Installing NPM dependencies...");
-            await this.runCommand("npm install");
+        console.log("🚀 Running Pulumi Up...");
+        const output = await this.runCommand("pulumi up --yes --stack dev");
 
-            console.log("🔄 Initializing Pulumi Stack...");
-            await this.runCommand("pulumi stack init dev").catch(() => { });
-
-            console.log("🚀 Running Pulumi Up...");
-            const output = await this.runCommand("pulumi up --yes --stack dev");
-
-            const isSuccess = !output.includes("error:") && !output.includes("failed");
-
-            return { success: isSuccess, logs: output };
-        } catch (error: any) {
-            return { success: false, logs: error.message };
-        }
+        // Reliably detect failure based on the tool's error string
+        const isSuccess = !output.startsWith("Command failed:");
+        return { success: isSuccess, logs: output };
     }
 }
