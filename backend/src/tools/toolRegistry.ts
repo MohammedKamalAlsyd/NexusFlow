@@ -3,13 +3,12 @@ import { readFileTool, writeFileTool, deleteFileTool, listFilesTool } from "./fs
 import { editFileTool, restoreFileTool } from "./fs/editWithDiff.js";
 import { searchContentTool } from "./fs/searchFiles.js";
 import { executeCommandTool } from "./terminal/commandUtils.js";
-
-// Import your newly created Cloud Discovery Tools
+import { webSearchTool } from "./web/searchTool.js";
 import { cloudDiscoveryTools } from "./cloud/index.js";
-// Note: Ensure you have an index.ts that exports both awsDiscoveryTools AND azureDiscoveryTools
 
 export const localFsTools = [readFileTool, writeFileTool, deleteFileTool, listFilesTool, editFileTool, restoreFileTool, searchContentTool];
 export const localTerminalTools = [executeCommandTool];
+export const webTools = [webSearchTool];
 
 // 1. Updated Roles
 export type AgentRole =
@@ -17,7 +16,8 @@ export type AgentRole =
     | "data-ops"
     | "devops"
     | "supervisor"
-    | "cloud-explorer";
+    | "cloud-explorer"
+    | "pipeline-coder";
 
 /**
  * A dynamic registry that combines local code tools, terminal tools,
@@ -35,7 +35,8 @@ export class ToolManager {
         const allLocalTools = [
             ...localFsTools,
             ...localTerminalTools,
-            ...cloudDiscoveryTools // Injected from your new cloud folders
+            ...cloudDiscoveryTools,
+            ...webTools
         ];
         for (const tool of allLocalTools) {
             this.tools.set(tool.name, tool as DynamicStructuredTool<any>);
@@ -54,6 +55,14 @@ export class ToolManager {
         const allTools = Array.from(this.tools.values());
 
         switch (role) {
+            case "pipeline-coder":
+                // The pipeline coder gets File System, Terminal, and Web Search!
+                return allTools.filter(t =>
+                    localFsTools.some(local => local.name === t.name) ||
+                    localTerminalTools.some(local => local.name === t.name) ||
+                    webTools.some(web => web.name === t.name)
+                );
+
             case "software-engineer":
                 return allTools.filter(t =>
                     localFsTools.some(local => local.name === t.name) ||
