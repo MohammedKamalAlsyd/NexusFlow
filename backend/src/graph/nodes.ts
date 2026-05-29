@@ -34,7 +34,7 @@ export const architectNode = async (state: typeof AgentState.State, config?: Run
     // 2. Define the exact shape we want for the final plan using Zod
     const architectSchema = z.object({
         strategy: z.enum(["GREENFIELD", "BROWNFIELD_ETL", "DATA_ANALYSIS"]).describe("The execution path to take."),
-        plan: z.string().describe("A detailed step-by-step architectural plan written in Markdown. Do NOT include actual code.")
+        plan: z.string().describe("A detailed step-by-step architectural plan written in Markdown. CRITICAL: Do NOT include actual code or code blocks (like ```json or ```python) inside this string, as it causes JSON escaping errors.")
     });
 
     // 3. Force the LLM to output the structured plan based on its findings

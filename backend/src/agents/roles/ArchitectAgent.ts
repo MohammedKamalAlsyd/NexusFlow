@@ -24,14 +24,15 @@ export class ArchitectAgent extends BaseAgent {
                - DATA_ANALYSIS: If the request is for insights, not infrastructure.
             4. ARCHITECTURAL OUTPUT: 
                - Provide a clear JSON plan detailing the components required.
-               - Output a comprehensive Markdown plan that explains the 'WHY' behind the choice of services across the discovered clouds.
+               - Output a comprehensive Markdown plan that explains the 'WHY' behind the choice of services.
+               - CRITICAL: DO NOT include any code blocks (e.g., \`\`\`json, \`\`\`python, \`\`\`sql) inside your plan. The Coder agent will write the actual code. Writing code blocks will break the JSON parser escaping.
             5. COMPLIANCE: Adhere to the 'least privilege' principle in your design. If you find existing IAM/Role management tools, use them to propose secure credential handling.`,
         });
     }
 
     public getRunnable() {
         // Now the architect has the explorer tools!
-        const tools = toolManager.getToolsForRole("cloud-explorer");
+        const tools = toolManager.getToolsForRole("architect");
         return this.getGraphRunnable(tools);
     }
 }

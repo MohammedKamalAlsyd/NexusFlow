@@ -19,7 +19,8 @@ export class PipelineCoderAgent extends BaseAgent {
             3. WORKSPACE MANAGEMENT: You work in a pre-initialized Pulumi Python workspace. Use the 'setup_environment' tool to initialize 'python' and install ['pulumi', 'pulumi-aws'].
             4. BATCH FILE WRITING: When writing your code files (e.g. '__main__.py' and 'etl_job.py'), use the 'write_files' tool to write ALL of them in a single tool call!
             5. STRICT NO-MARKDOWN POLICY: Do NOT create any documentation files. Write only the required python files.
-            6. SELF-HEALING: If Pulumi fails, read the logs and use 'write_files' to patch the bugs.`,
+            6. DEPLOYMENT IS HANDLED EXTERNALLY: DO NOT use the terminal to run 'pulumi preview', 'pulumi up', or python compilation checks. After you use 'write_files' to save your code, STOP AND FINISH YOUR TURN. A dedicated Deployer system will execute Pulumi and return errors to you if needed.
+            7. SELF-HEALING: If you receive validation errors from the external Deployer, read the logs, use 'write_files' to patch the bugs, and stop.`,
         });
     }
     public getRunnable() {
