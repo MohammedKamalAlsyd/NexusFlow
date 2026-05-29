@@ -121,12 +121,25 @@ export const listFilesTool = tool(
         const safety = await validateFileOperation("read", dirPath);
         if (!safety.safe) return `Access Denied: ${safety.reason}`;
 
+        // a list of folder/file names to ignore
+        const IGNORED_NAMES = new Set(["node_modules", "dist", "build", ".git"]);
+
         try {
             const resolvedPath = path.resolve(dirPath);
             const entries = await fs.readdir(resolvedPath, { withFileTypes: true });
 
-            const fileList = entries.map(entry => entry.isDirectory() ? `[DIR]  ${entry.name}` : `[FILE] ${entry.name}`);
-            if (fileList.length === 0) return "Directory is empty.";
+            // Filter out hidden items and explicitly ignored folders
+            const filteredEntries = entries.filter(entry => {
+                const name = entry.name;
+                // Exclude hidden files/folders (starting with '.') and explicitly ignored names
+                return !name.startsWith(".") && !IGNORED_NAMES.has(name);
+            });
+
+            const fileList = filteredEntries.map(entry => 
+                entry.isDirectory() ? `[DIR]  ${entry.name}` : `[FILE] ${entry.name}`
+            );
+            
+            if (fileList.length === 0) return "Directory is empty (or all contents are hidden/ignored).";
 
             return `Listing contents of ${dirPath}:\n${fileList.join("\n")}`;
         } catch (error: any) {
@@ -135,7 +148,7 @@ export const listFilesTool = tool(
     },
     {
         name: "list_files",
-        description: "Lists all files and directories in the specified path.",
+        description: "Lists files and directories in the specified path, excluding hidden and heavy system folders.",
         schema: z.object({ dirPath: z.string() }),
     }
 );

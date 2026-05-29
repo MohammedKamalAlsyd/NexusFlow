@@ -24,38 +24,47 @@ export const architectNode = async (state: typeof AgentState.State, config?: Run
 
     // 1. Let the Architect use its tools to explore the environment first
     const runner = architect.getRunnable();
-    const explorePrompt = `User Request: ${userRequest}\n\nBefore planning, use your MCP tools to discover existing infrastructure (S3, databases, roles) related to this request.`;
-
+    const explorePrompt = `User Request: ${userRequest}\n\nBefore planning, use your MCP tools to discover existing infrastructure.`;
     const exploreResponse = await runner.invoke({ messages: [{ role: "user", content: explorePrompt }] }, config);
 
     // Extract the AI's summary of what it found
     const aiContext = exploreResponse.messages[exploreResponse.messages.length - 1]?.content || "No existing infrastructure found.";
 
-    // 2. Define the exact shape we want for the final plan using Zod
-    const architectSchema = z.object({
-        strategy: z.enum(["GREENFIELD", "BROWNFIELD_ETL", "DATA_ANALYSIS"]).describe("The execution path to take."),
-        plan: z.string().describe("A detailed step-by-step architectural plan written in Markdown. CRITICAL: Do NOT include actual code or code blocks (like ```json or ```python) inside this string, as it causes JSON escaping errors.")
-    });
+    // 2. Define the Prompt
+    const planPrompt = `User Request: ${userRequest}
+            Discovered Environment: ${aiContext}
 
-    // 3. Force the LLM to output the structured plan based on its findings
-    const structuredLlm = architect.model.withStructuredOutput(architectSchema, { name: "ArchitectPlan" });
+            Based on this, decide the executionStrategy. You MUST output ONLY a valid JSON object matching this exact schema:
+            {
+            "strategy": "GREENFIELD" | "BROWNFIELD_ETL" | "DATA_ANALYSIS",
+            "plan": "Detailed Markdown plan. DO NOT use markdown code blocks inside this string!"
+            }
+            Do not include any extra text outside the JSON object.`;
 
     try {
-        const planPrompt = `User Request: ${userRequest}\nDiscovered Environment: ${aiContext}\n\nBased on this, decide the executionStrategy and create a detailed Markdown plan.`;
-
-        const result = await structuredLlm.invoke([
+        const response = await architect.model.invoke([
             { role: "system", content: architect.systemPrompt },
             { role: "user", content: planPrompt }
         ], config);
+
+        let rawOutput = String(response.content).trim();
+
+        // Remove <think> blocks if present
+        rawOutput = rawOutput.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+
+        // Remove markdown ```json ``` wrappers if the LLM hallucinates them
+        rawOutput = rawOutput.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+
+        const result = JSON.parse(rawOutput);
 
         return {
             currentStep: "planning",
             executionStrategy: result.strategy,
             cloudPlan: result.plan,
-            environmentContext: { discovered: aiContext } // Save findings to state
+            environmentContext: { discovered: aiContext }
         };
     } catch (error: any) {
-        console.error("⚠️ [ARCHITECT]: Structured Output Failed.", error.message);
+        console.error("⚠️ [ARCHITECT]: Output Parsing Failed. Ensure the model returned valid JSON.", error.message);
         return {
             currentStep: "planning-failed",
             deploymentStatus: "FATAL_ERROR",

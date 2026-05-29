@@ -31,7 +31,9 @@ export const executeCommandTool = tool(
             const { stdout, stderr } = await execAsync(command);
             return `Output:\n${stdout}\n${stderr ? `Errors:\n${stderr}` : ""}`;
         } catch (error: any) {
-            return `Command failed: ${error.message}`;
+            const stdout = error.stdout ? `\nStdout:\n${error.stdout}` : "";
+            const stderr = error.stderr ? `\nStderr:\n${error.stderr}` : "";
+            return `Command failed with exit code ${error.code || 'unknown'}.${stdout}${stderr}\nSystem Message: ${error.message}`;
         }
     },
     {

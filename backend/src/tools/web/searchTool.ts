@@ -1,16 +1,32 @@
+// src/tools/web/searchTool.ts
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import { DuckDuckGoSearch } from "@langchain/community/tools/duckduckgo_search";
+import { tavily } from "@tavily/core";
 
-const ddg = new DuckDuckGoSearch({ maxResults: 3 });
+// Initialize Tavily via the official SDK
+const tvly = tavily({ apiKey: process.env.TAVILY_API_KEY as string });
 
 export const webSearchTool = tool(
     async ({ query }) => {
         try {
-            const results = await ddg.invoke(query);
-            return `Search Results for "${query}":\n${results}`;
+            // Execute search using the official modern core package
+            const response = await tvly.search(query, {
+                searchDepth: "basic", // or "advanced" for deeper research
+                maxResults: 3
+            });
+
+            // If the structure returns a result array, format it cleanly for the LLM context
+            if (response && response.results) {
+                const formattedResults = response.results
+                    .map((res: any, index: number) => `[${index + 1}] ${res.title}\nURL: ${res.url}\nSnippet: ${res.content}\n`)
+                    .join("\n");
+                
+                return `Search Results for "${query}":\n\n${formattedResults}`;
+            }
+
+            return `No meaningful results returned for: "${query}"`;
         } catch (error: any) {
-            return `Search failed: ${error.message}`;
+            return `Search failed via Tavily: ${error.message}`;
         }
     },
     {

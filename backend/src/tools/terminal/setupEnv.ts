@@ -62,26 +62,26 @@ export const setupEnvironmentTool = tool(
             }
 
             if (type === "python") {
-                const venvPath = path.join(resolvedPath, "venv");
-                let hasVenv = false;
+                const venvPath = path.join(resolvedPath, ".venv"); // uv defaults to using .venv
 
                 try {
                     await fs.access(venvPath);
-                    hasVenv = true;
                 } catch {
-                    log += "🐍 Creating Python Virtual Environment (venv)...\n";
-                    await execAsync(`cd "${resolvedPath}" && python -m venv venv`);
-                    hasVenv = true;
+                    log += "⚡ Creating Python Virtual Environment using uv...\n";
+                    await execAsync(`cd "${resolvedPath}" && uv venv`);
                 }
 
                 if (packages && packages.length > 0) {
-                    // Correct pip path depending on Windows vs POSIX
-                    const pipPath = process.platform === "win32" ? "venv\\Scripts\\pip" : "venv/bin/pip";
-                    const installCmd = `${pipPath} install ${packages.join(" ")}`;
+                    // uv automatically detects the .venv folder in the current directory!
+                    const installCmd = `uv pip install ${packages.join(" ")}`;
 
-                    log += `🐍 Installing Python packages: ${installCmd}...\n`;
-                    const { stdout, stderr } = await execAsync(`cd "${resolvedPath}" && ${installCmd}`);
-                    log += `${stdout}\n${stderr ? `Errors/Warnings:\n${stderr}` : ""}`;
+                    log += `⚡ Installing Python packages: ${installCmd}...\n`;
+                    try {
+                        const { stdout, stderr } = await execAsync(`cd "${resolvedPath}" && ${installCmd}`);
+                        log += `${stdout}\n${stderr ? `Errors/Warnings:\n${stderr}` : ""}`;
+                    } catch (error: any) {
+                        log += `❌ Install failed: ${error.message}\n${error.stdout || ''}\n${error.stderr || ''}`;
+                    }
                 }
             }
 
@@ -92,7 +92,7 @@ export const setupEnvironmentTool = tool(
     },
     {
         name: "setup_environment",
-        description: "Initializes nodejs (npm install) or python (venv/pip) dependencies inside a specific workspace directory.",
+        description: "Initializes nodejs (npm install) or python (uv venv / uv pip) dependencies inside a specific workspace directory.",
         schema: z.object({
             workspacePath: z.string().describe("The absolute path to the workspace folder"),
             type: z.enum(["nodejs", "python"]).describe("The runtime environment stack to set up"),

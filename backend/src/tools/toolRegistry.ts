@@ -54,10 +54,15 @@ export class ToolManager {
                 // Architect gets ALL discovery, catalog, and list tools from the MCP servers.
                 // NO code execution or file system tools.
                 return allTools.filter(t =>
-                    t.name.includes("list") ||
-                    t.name.includes("get_") ||
-                    t.name.includes("check_") ||
-                    t.name.includes("catalog")
+                    !localFsTools.some(local => local.name === t.name) &&
+                    !localTerminalTools.some(local => local.name === t.name) &&
+                    !webTools.some(web => web.name === t.name) &&
+                    (
+                        t.name.includes("list") ||
+                        t.name.includes("get_") ||
+                        t.name.includes("check_") ||
+                        t.name.includes("catalog")
+                    )
                 );
 
             case "pipeline-coder":
