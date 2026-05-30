@@ -1,4 +1,3 @@
-// backend/src/tools/terminal/setupEnv.ts
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { exec } from "node:child_process";
@@ -62,17 +61,17 @@ export const setupEnvironmentTool = tool(
             }
 
             if (type === "python") {
-                const venvPath = path.join(resolvedPath, ".venv"); // uv defaults to using .venv
+                const venvPath = path.join(resolvedPath, ".venv");
 
                 try {
                     await fs.access(venvPath);
                 } catch {
-                    log += "⚡ Creating Python Virtual Environment using uv...\n";
-                    await execAsync(`cd "${resolvedPath}" && uv venv`);
+                    log += "⚡ Creating Python Virtual Environment using uv (with pip seed)...\n";
+                    await execAsync(`cd "${resolvedPath}" && uv venv --seed`);
                 }
 
                 if (packages && packages.length > 0) {
-                    // uv automatically detects the .venv folder in the current directory!
+                    // uv automatically detects the .venv folder in the current directory
                     const installCmd = `uv pip install ${packages.join(" ")}`;
 
                     log += `⚡ Installing Python packages: ${installCmd}...\n`;

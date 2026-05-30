@@ -89,7 +89,7 @@ export const pipelineCoderNode = async (state: typeof AgentState.State, config?:
         console.log("📦 Auto-scaffolding minimal Python Pulumi configuration...");
 
         // 1. Scaffold Pulumi Python settings (NO tsconfig or package.json!)
-        const pulumiYaml = `name: nexusflow-deployment\nruntime: python\ndescription: NexusFlow Auto-Generated IaC in Python\n`;
+        const pulumiYaml = `name: nexusflow-deployment\nruntime:\n  name: python\n  options:\n    virtualenv: .venv\ndescription: NexusFlow Auto-Generated IaC in Python\n`;
         await fs.writeFile(path.join(currentWorkspace, "Pulumi.yaml"), pulumiYaml);
     }
 

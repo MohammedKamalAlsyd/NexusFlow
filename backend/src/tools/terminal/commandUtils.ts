@@ -1,17 +1,60 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import { exec } from "node:child_process";
-import { promisify } from "node:util";
+import { spawn } from "node:child_process";
 import { askForPermission } from "@/safety/interactivity.js";
 import { safetyManager } from "@/safety/safetyContext.js";
 
-const execAsync = promisify(exec);
+/**
+ * Spawns a shell command interactively.
+ * - stdin is inherited (allowing you to type answers to prompts like Passphrases).
+ * - stdout/stderr are captured for the LLM *and* streamed live to your console.
+ */
+const runInteractiveCommand = (cmd: string): Promise<{ stdout: string; stderr: string; code: number }> => {
+    return new Promise((resolve) => {
+        const child = spawn(cmd, {
+            shell: true,
+            stdio: ["inherit", "pipe", "pipe"],
+            env: {
+                ...process.env,
+                // Bypasses the annoying Pulumi passphrase prompt for local dev if not set
+                PULUMI_CONFIG_PASSPHRASE: process.env.PULUMI_CONFIG_PASSPHRASE || "",
+            },
+        });
+
+        let stdoutData = "";
+        let stderrData = "";
+
+        if (child.stdout) {
+            child.stdout.on("data", (chunk) => {
+                const str = chunk.toString();
+                stdoutData += str;
+                process.stdout.write(str); // Live stream to user console
+            });
+        }
+
+        if (child.stderr) {
+            child.stderr.on("data", (chunk) => {
+                const str = chunk.toString();
+                stderrData += str;
+                process.stderr.write(str); // Live stream to user console
+            });
+        }
+
+        child.on("close", (code) => {
+            resolve({ stdout: stdoutData, stderr: stderrData, code: code ?? 1 });
+        });
+
+        child.on("error", (error) => {
+            resolve({ stdout: stdoutData, stderr: stderrData + `\nSystem Error: ${error.message}`, code: 1 });
+        });
+    });
+};
 
 export const executeCommandTool = tool(
     async ({ command }) => {
         const context = safetyManager.getContext();
 
-        // Extract the actual command, ignoring directory changes (e.g., "cd /workspace && npm install" -> "npm install")
+        // Extract the actual command, ignoring directory changes
         const actualCommand = command.includes("&&") ? command.split("&&").pop()?.trim() || command : command;
 
         // 1. Safety Check: Block commands defined in safety context
@@ -23,22 +66,25 @@ export const executeCommandTool = tool(
             return `Access Denied: The command '${actualCommand}' is blocked by security policy.`;
         }
 
-        // 2. Human-in-the-loop: Ask before executing using the clean command name
+        // 2. Human-in-the-loop: Ask before executing
         const approved = await askForPermission("execute", actualCommand);
         if (!approved) return "Operation cancelled by user.";
 
         try {
-            const { stdout, stderr } = await execAsync(command);
-            return `Output:\n${stdout}\n${stderr ? `Errors:\n${stderr}` : ""}`;
+            const { stdout, stderr, code } = await runInteractiveCommand(command);
+
+            if (code !== 0) {
+                return `Command failed: Exit code ${code}.\nStdout:\n${stdout}\nStderr:\n${stderr}`;
+            }
+
+            return `Output:\n${stdout}\n${stderr ? `Warnings:\n${stderr}` : ""}`;
         } catch (error: any) {
-            const stdout = error.stdout ? `\nStdout:\n${error.stdout}` : "";
-            const stderr = error.stderr ? `\nStderr:\n${error.stderr}` : "";
-            return `Command failed with exit code ${error.code || 'unknown'}.${stdout}${stderr}\nSystem Message: ${error.message}`;
+            return `Command failed: System exception occurred. ${error.message}`;
         }
     },
     {
         name: "execute_command",
-        description: "Executes a shell command. Use for tasks like running tests or installing packages.",
+        description: "Executes a shell command. Automatically streams output to terminal and supports interactive inputs.",
         schema: z.object({
             command: z.string().describe("The shell command to execute"),
         }),
