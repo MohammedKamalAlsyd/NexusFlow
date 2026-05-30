@@ -3,7 +3,7 @@ import { z } from "zod";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { isPathAllowed, isPathBlocked } from "@/safety/pathValidator.js";
-import { safetyManager } from "@/safety/safetyContext.js";
+import { configManager } from "@/config/index.js";
 
 async function isBinary(filePath: string): Promise<boolean> {
     try {
@@ -20,10 +20,10 @@ async function isBinary(filePath: string): Promise<boolean> {
 
 export const searchContentTool = tool(
     async ({ pattern, dirPath }) => {
-        const context = safetyManager.getContext();
+        const safetyConfig = configManager.config.safety;
 
-        // Check if the root search directory is allowed
-        const check = isPathAllowed(dirPath, context);
+        // Check if the root search directory is allowed (uses new parameterless validator)
+        const check = isPathAllowed(dirPath);
         if (!check.safe) return `Access Denied: ${check.reason}`;
 
         const results: string[] = [];
@@ -36,17 +36,17 @@ export const searchContentTool = tool(
             for (const entry of entries) {
                 const fullPath = path.join(currentDir, entry.name);
 
-                // Dynamically check against blocked patterns from the safety context
-                if (isPathBlocked(fullPath, context)) {
+                // Dynamically check against blocked patterns via new validator
+                if (isPathBlocked(fullPath)) {
                     continue; // Skip this file or entire directory
                 }
 
                 if (entry.isDirectory()) {
                     await walk(fullPath);
                 } else if (entry.isFile()) {
-                    // Check extensions to prevent reading massive built .exe files
+                    // Check extensions to prevent reading prohibited file types
                     const ext = path.extname(fullPath).toLowerCase();
-                    if (context.notAllowedExtensions.includes(ext)) continue;
+                    if (safetyConfig.notAllowedExtensions.includes(ext)) continue;
 
                     if (await isBinary(fullPath)) continue;
 
@@ -64,7 +64,7 @@ export const searchContentTool = tool(
         }
 
         try {
-            await walk(path.resolve(context.projectRoot, dirPath));
+            await walk(path.resolve(safetyConfig.projectRoot, dirPath));
             if (results.length === 0) return "No matches found.";
             return results.join("\n");
         } catch (err: any) {
