@@ -45,8 +45,8 @@ const routeAfterDeployment = (state: typeof AgentState.State) => {
         return "pipeline-coder";
     }
 
-    console.log(`🚀 [ROUTER]: Pipeline Successfully Deployed! Workflow Complete.`);
-    return END;
+    console.log(`🚀 [ROUTER]: Pipeline Successfully Deployed! Routing to DataOps to trigger the Job.`);
+    return "data-ops";
 };
 
 // ==========================================
@@ -86,6 +86,7 @@ const workflow = new StateGraph(AgentState)
         routeAfterDeployment,
         {
             "pipeline-coder": "pipeline-coder", // Loop back to fix code
+            "data-ops": "data-ops",             // If deployment succeeds, trigger DataOps to run the job
             [END]: END                          // Success, fatal error, or halt
         }
     );

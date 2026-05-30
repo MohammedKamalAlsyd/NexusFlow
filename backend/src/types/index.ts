@@ -17,6 +17,9 @@ export interface NexusConfig {
   preferences: {
     confirmationMode: "manual" | "auto";
   };
+  pulumi: {
+    backend: "local" | "cloud";
+  };
   safety: {
     projectRoot: string;
     workspaceRoot: string;

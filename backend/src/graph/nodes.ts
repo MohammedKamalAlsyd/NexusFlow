@@ -182,15 +182,34 @@ export const deployerNode = async (state: typeof AgentState.State, config?: Runn
  * For 'DATA_ANALYSIS' strategy. Runs diagnostic queries via MCP instead of deploying code.
  */
 export const dataOpsNode = async (state: typeof AgentState.State, config?: RunnableConfig) => {
-    console.log("📊 [DATA OPS]: Running analysis queries via MCP...");
 
-    const prompt = `Execute this analysis plan: ${state.cloudPlan} against the environment: ${JSON.stringify(state.environmentContext)}`;
+    let prompt = "";
+    let currentStepName = "";
+
+    // 1. Determine context: Are we just analyzing data, or executing a deployed pipeline?
+    if (state.executionStrategy === "DATA_ANALYSIS") {
+        console.log("📊 [DATA OPS]: Running analysis queries via MCP...");
+        currentStepName = "data-analysis-complete";
+        prompt = `Execute this analysis plan: ${state.cloudPlan} against the environment: ${JSON.stringify(state.environmentContext)}`;
+    } else {
+        console.log("▶️ [DATA OPS]: Infrastructure deployed. Triggering and monitoring ETL Job...");
+        currentStepName = "job-execution-complete";
+        const originalRequest = state.messages[0]?.content || "Process Data";
+        prompt = `The infrastructure and ETL scripts have been successfully deployed via Pulumi.
+        Your task is to:
+        1. Identify the newly deployed job (e.g., AWS Glue, Azure Data Factory) related to this request: "${originalRequest}".
+        2. Use your MCP tools to TRIGGER / START the job execution.
+        3. Poll and monitor the job status until it succeeds.
+        4. Verify that the output data was written correctly to the destination (e.g., check if the parquet files exist).
+        
+        Report the final execution status back to the user.`;
+    }
 
     const runner = dataOps.getRunnable();
     const response = await runner.invoke({ messages: [{ role: "user", content: prompt }] }, config);
 
     return {
-        currentStep: "data-analysis-complete",
+        currentStep: currentStepName,
         messages: response.messages,
         deploymentStatus: "SUCCESS" // End graph cleanly
     };

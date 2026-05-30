@@ -78,7 +78,8 @@ export class ToolManager {
                 // DataOps gets MCP DB querying and analysis tools, but no local FS.
                 return allTools.filter(t =>
                     !localFsTools.some(local => local.name === t.name) &&
-                    !localTerminalTools.some(local => local.name === t.name) &&
+                    t.name !== "setup_environment" &&
+                    !webTools.some(web => web.name === t.name) &&
                     !t.name.includes("documentation")
                 );
 

@@ -5,6 +5,7 @@ import type { AllowlistRule, NexusConfig } from "@/types/index.js";
 const DEFAULT_CONFIG: NexusConfig = {
   version: "1.1.0",
   preferences: { confirmationMode: "manual" },
+  pulumi: { backend: "cloud" },
   safety: {
     projectRoot: process.cwd(),
     workspaceRoot: path.resolve(process.cwd(), "CodeSandBox"),

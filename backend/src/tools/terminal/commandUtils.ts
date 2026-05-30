@@ -18,6 +18,7 @@ const runInteractiveCommand = (cmd: string): Promise<{ stdout: string; stderr: s
                 ...process.env,
                 // Bypasses the annoying Pulumi passphrase prompt for local dev if not set
                 PULUMI_CONFIG_PASSPHRASE: process.env.PULUMI_CONFIG_PASSPHRASE || "",
+                PULUMI_ACCESS_TOKEN: process.env.PULUMI_ACCESS_TOKEN || "",
             },
         });
 
