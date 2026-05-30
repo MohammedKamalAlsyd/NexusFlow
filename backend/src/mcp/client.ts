@@ -1,6 +1,6 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio";
-import { DynamicStructuredTool, StructuredTool } from "@langchain/core/tools";
+import { DynamicStructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
 import { toolManager } from "@/tools/toolRegistry.js";
 import { askForPermission } from "@/safety/interactivity.js";
@@ -79,8 +79,12 @@ export class McpClientManager {
             func: async (input: Record<string, any>) => {
 
                 // 1. Human-in-the-Loop Safety Check for external MCP execution
-                const operationName = `MCP Tool [${namespacedToolName}]`;
-                const approved = await askForPermission("execute", operationName);
+                const approved = await askForPermission(
+                    "mcp",
+                    "mcp",
+                    namespacedToolName,
+                    `Agent wants to execute external MCP Tool: [${namespacedToolName}]`
+                );
 
                 if (!approved) {
                     return "Operation cancelled by user.";

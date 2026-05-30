@@ -1,79 +1,69 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import type { AllowlistRule, NexusConfig } from "@/types/index.js";
 
-export interface AllowlistRule {
-  path?: string;
-  command?: string;
-  operation: "read" | "write" | "delete" | "execute" | "all";
-  addedAt: string; // Stored as ISO string in JSON
-}
+const DEFAULT_CONFIG: NexusConfig = {
+  version: "1.1.0",
+  preferences: { confirmationMode: "manual" },
+  safety: {
+    projectRoot: process.cwd(),
+    workspaceRoot: path.resolve(process.cwd(), "CodeSandBox"),
+    allowedPaths: ["CodeSandBox"],
+    blockedPatterns: ["node_modules", "\\.git", "dist", "build"],
+    blockedCommands: ["rm -rf", "sudo", "shutdown", "reboot", "kill", "passwd", "format"],
+    readOnlyFiles: ["package.json", "package-lock.json"],
+    notAllowedExtensions: [".exe", ".sh", ".bat", ".cmd"],
+  },
+  allowList: { files: [], commands: [], mcp: [] },
+};
 
-export interface Preferences {
-  confirmationMode: "manual" | "auto";
-}
-
-export class SettingManager {
-  private _version: string = "1.0.0";
-  private _allowList: { files: AllowlistRule[]; commands: AllowlistRule[] } = { files: [], commands: [] };
-  private _preferences: Preferences = { confirmationMode: "manual" };
+export class ConfigManager {
+  public config: NexusConfig;
   private configPath: string;
-  private _backupDir: string = path.resolve(process.cwd(), ".backups");
 
   constructor() {
-    this.configPath = path.resolve(process.cwd(), ".agentic-settings.json");
+    this.configPath = path.resolve(import.meta.dirname, ".nexusflow-settings.json");
+    this.config = { ...DEFAULT_CONFIG };
   }
 
-  // --- PERSISTENCE ---
   async load(): Promise<void> {
     try {
       const data = await fs.readFile(this.configPath, "utf-8");
       const parsed = JSON.parse(data);
-      this._version = parsed.version || this._version;
-      this._allowList = parsed.allowList || this._allowList;
-      this._preferences = parsed.preferences || this._preferences;
-      this._backupDir = parsed.backupDir || this._backupDir;
+      // Merge loaded config with defaults to ensure new fields are populated
+      this.config = {
+        ...DEFAULT_CONFIG,
+        ...parsed,
+        safety: { ...DEFAULT_CONFIG.safety, ...(parsed.safety || {}) },
+        allowList: { ...DEFAULT_CONFIG.allowList, ...(parsed.allowList || {}) }
+      };
     } catch (err: any) {
       if (err.code !== "ENOENT") {
-        console.warn(`Failed to load settings from ${this.configPath}: ${err.message}`);
+        console.warn(`Failed to load config: ${err.message}`);
       }
-      // If file doesn't exist, we just use defaults.
     }
   }
 
   async save(): Promise<void> {
-    const data = {
-      version: this._version,
-      backupDir: this._backupDir,
-      allowList: this._allowList,
-      preferences: this._preferences,
-    };
-    await fs.writeFile(this.configPath, JSON.stringify(data, null, 2), "utf-8");
+    await fs.writeFile(this.configPath, JSON.stringify(this.config, null, 2), "utf-8");
   }
 
   // --- ALLOWLIST MANAGEMENT ---
-  get allowListFiles() { return this._allowList.files; }
+  async addRule(category: "files" | "commands" | "mcp", rule: Omit<AllowlistRule, "addedAt">): Promise<void> {
+    // Avoid duplicates
+    const exists = this.config.allowList[category].some(
+      r => r.target === rule.target && r.operation === rule.operation
+    );
+    if (exists) return;
 
-  async addFileRule(rule: Omit<AllowlistRule, "addedAt">): Promise<void> {
-    if (!rule.path) throw new Error("File rule must include a path");
-    this._allowList.files.push({ ...rule, addedAt: new Date().toISOString() });
+    this.config.allowList[category].push({ ...rule, addedAt: new Date().toISOString() });
     await this.save();
   }
-
-  // --- PREFERENCES ---
-  get confirmationMode() { return this._preferences.confirmationMode; }
 
   async setConfirmationMode(mode: "manual" | "auto"): Promise<void> {
-    this._preferences.confirmationMode = mode;
+    this.config.preferences.confirmationMode = mode;
     await this.save();
   }
-
-  // --- BACKUP DIRECTORY ---
-  get backupDir() { return this._backupDir; }
-  async setbackupDir(path:string): Promise<void> {
-    this._backupDir = path;
-    await this.save();
-  }
-
 }
 
-export const settings = new SettingManager();
+export const configManager = new ConfigManager();

@@ -17,8 +17,13 @@ export const setupEnvironmentTool = tool(
             return `Access Denied: ${safety.reason}`;
         }
 
-        // Ask for human-in-the-loop permission as this runs an execution command
-        const approved = await askForPermission("execute", `Setup ${type} Env in ${path.basename(resolvedPath)}`);
+        // Ask for human-in-the-loop permission using a normalized target ("setup_python_env" or "setup_nodejs_env")
+        const approved = await askForPermission(
+            "commands",
+            "execute",
+            `setup_${type}_env`,
+            `Agent wants to setup ${type} Environment in [${path.basename(resolvedPath)}]`
+        );
         if (!approved) {
             return "Operation cancelled by user.";
         }

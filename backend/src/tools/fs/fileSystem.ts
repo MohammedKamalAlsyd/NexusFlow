@@ -40,6 +40,11 @@ export const readFileTool = tool(
 // --- WRITE MULTIPLE FILES ---
 export const writeFileTool = tool(
     async ({ files }) => {
+        // Guard against empty batch writes (satisfies TypeScript)
+        if (!files || files.length === 0) {
+            return "No files provided to write.";
+        }
+
         // 1. Validate paths for all files before making any changes
         for (const file of files) {
             const safety = await validateFileOperation("write", file.filePath);
@@ -49,8 +54,14 @@ export const writeFileTool = tool(
         }
 
         // 2. Ask user for permission ONCE for the entire batch
+        const targetDir = path.dirname(path.resolve(files[0]!.filePath)); 
         const fileNames = files.map(f => path.basename(f.filePath)).join(", ");
-        const approved = await askForPermission("write", `Batch Write (${files.length} files): [${fileNames}]`);
+        const approved = await askForPermission(
+            "files", 
+            "write", 
+            targetDir, 
+            `Agent wants to batch write ${files.length} files to [${targetDir}]: \nFiles: ${fileNames}`
+        );
         if (!approved) return "Operation cancelled by user.";
 
         // 3. Write all files
@@ -85,15 +96,27 @@ export const writeFileTool = tool(
 // --- DELETE MULTIPLE FILES ---
 export const deleteFileTool = tool(
     async ({ filePaths }) => {
+        if (filePaths.length === 0) return "No files specified for deletion.";
+
+        // 1. Safety check paths for all files
         for (const filePath of filePaths) {
             const safety = await validateFileOperation("delete", filePath);
             if (!safety.safe) return `Access Denied for ${filePath}: ${safety.reason}. No files deleted.`;
         }
 
+        // 2. Ask for permission targeting the workspace directory containing the files
+        const targetDir = path.dirname(path.resolve(filePaths[0]!));
         const fileNames = filePaths.map(f => path.basename(f)).join(", ");
-        const approved = await askForPermission("delete", `Batch Delete: [${fileNames}]`);
+        
+        const approved = await askForPermission(
+            "files",
+            "delete",
+            targetDir,
+            `Agent wants to batch delete files inside [${targetDir}]:\nFiles: ${fileNames}`
+        );
         if (!approved) return "Operation cancelled by user.";
 
+        // 3. Execute deletions
         const results: string[] = [];
         for (const filePath of filePaths) {
             try {

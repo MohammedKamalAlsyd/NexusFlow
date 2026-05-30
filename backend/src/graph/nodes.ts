@@ -3,7 +3,7 @@ import { ArchitectAgent } from "@/agents/roles/ArchitectAgent.js";
 import { PipelineCoderAgent } from "@/agents/roles/PipelineCoderAgent.js";
 import { DataOpsAgent } from "@/agents/roles/DataOpsAgent.js";
 import { PulumiService } from "@/services/PulumiService.js";
-import { safetyManager } from "@/safety/safetyContext.js";
+import { configManager } from "@/config/index.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { RunnableConfig } from "@langchain/core/runnables";
@@ -82,8 +82,8 @@ export const pipelineCoderNode = async (state: typeof AgentState.State, config?:
 
     let currentWorkspace = state.workspacePath;
     if (!currentWorkspace) {
-        const context = safetyManager.getContext();
-        currentWorkspace = path.resolve(context.workspaceRoot, `nexusflow-run-${Date.now()}`);
+        const workspaceRoot = configManager.config.safety.workspaceRoot;
+        currentWorkspace = path.resolve(workspaceRoot, `nexusflow-run-${Date.now()}`);
         await fs.mkdir(currentWorkspace, { recursive: true });
 
         console.log("📦 Auto-scaffolding minimal Python Pulumi configuration...");

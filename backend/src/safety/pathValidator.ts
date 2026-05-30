@@ -1,6 +1,6 @@
 import path from "node:path";
 import fs from "node:fs/promises";
-import { safetyManager, type SafetyContext } from "./safetyContext.js";
+import { configManager } from "../config/index.js";
 
 export interface ValidationResult {
   safe: boolean;
@@ -8,48 +8,49 @@ export interface ValidationResult {
 }
 
 /**
- * Helper to check if a specific path matches any blocked pattern.
- * Exposed so tools like searchFiles can use it to skip directories.
+ * Checks if a path matches any blocked patterns configured in safety settings.
+ * Used to skip directories and prevent access to restricted areas.
  */
-export function isPathBlocked(targetPath: string, context: SafetyContext): boolean {
-  return context.blockedPatterns.some((patternString) => {
-    const regex = new RegExp(patternString);
-    return regex.test(targetPath);
+export function isPathBlocked(targetPath: string): boolean {
+  return configManager.config.safety.blockedPatterns.some((patternString) => {
+    return new RegExp(patternString).test(targetPath);
   });
 }
 
 /**
- * Checks if a requested path is allowed based on the security context.
- * Prevents Directory Traversal (e.g., ../../etc/passwd)
+ * Validates if a path is allowed based on security configuration.
+ * Prevents directory traversal, restricts to allowed directories, blocks extensions,
+ * and checks against blocked patterns.
  */
-export function isPathAllowed(filePath: string, context: SafetyContext = safetyManager.getContext()): ValidationResult {
-  const resolvedPath = path.resolve(context.projectRoot, filePath);
+export function isPathAllowed(filePath: string): ValidationResult {
+  const safety = configManager.config.safety;
+  const resolvedPath = path.resolve(safety.projectRoot, filePath);
 
   // 1. Verify path is strictly inside the project root (prevents directory traversal)
-  const relativeToRoot = path.relative(context.projectRoot, resolvedPath);
+  const relativeToRoot = path.relative(safety.projectRoot, resolvedPath);
   if (relativeToRoot.startsWith("..") || path.isAbsolute(relativeToRoot)) {
-    return { safe: false, reason: "Path traversal detected: File is outside project root." };
+    return { safe: false, reason: "Path traversal detected." };
   }
 
-  // 2. Verify path is inside at least one of the allowed relative paths
-  const isInsideAllowedPath = context.allowedPaths.some((allowedDir) => {
-    const resolvedAllowedDir = path.resolve(context.projectRoot, allowedDir);
+  // 2. Verify path is inside at least one of the allowed directories
+  const isInsideAllowedPath = safety.allowedPaths.some((allowedDir) => {
+    const resolvedAllowedDir = path.resolve(safety.projectRoot, allowedDir);
     const relativeToAllowed = path.relative(resolvedAllowedDir, resolvedPath);
     return !relativeToAllowed.startsWith("..") && !path.isAbsolute(relativeToAllowed);
   });
 
   if (!isInsideAllowedPath) {
-    return { safe: false, reason: `Path is not within allowed directories: ${context.allowedPaths.join(", ")}` };
+    return { safe: false, reason: `Path is not within allowed directories.` };
   }
 
   // 3. Check dynamically blocked regex patterns (e.g., node_modules)
-  if (isPathBlocked(resolvedPath, context)) {
-    return { safe: false, reason: "Path matches a blocked pattern configured in safety settings." };
+  if (isPathBlocked(resolvedPath)) {
+    return { safe: false, reason: "Path matches a blocked pattern." };
   }
 
-  // 4. Check not allowed file extensions
+  // 4. Check file extension restrictions
   const ext = path.extname(resolvedPath).toLowerCase();
-  if (context.notAllowedExtensions.includes(ext)) {
+  if (safety.notAllowedExtensions.includes(ext)) {
     return { safe: false, reason: `File extension '${ext}' is strictly prohibited.` };
   }
 
@@ -57,40 +58,39 @@ export function isPathAllowed(filePath: string, context: SafetyContext = safetyM
 }
 
 /**
- * Validates whether an operation is permitted on a specific file path.
+ * Validates whether a specific operation is permitted on a file path.
+ * Checks path security, file access constraints, and operation-specific rules.
  */
 export async function validateFileOperation(
   operation: "read" | "write" | "delete" | "execute",
-  filePath: string,
-  context: SafetyContext = safetyManager.getContext()
+  filePath: string
 ): Promise<ValidationResult> {
-  const resolvedPath = path.resolve(context.projectRoot, filePath);
+  const safety = configManager.config.safety;
+  const resolvedPath = path.resolve(safety.projectRoot, filePath);
 
   // 1. Check basic path security
-  const pathCheck = isPathAllowed(resolvedPath, context);
+  const pathCheck = isPathAllowed(resolvedPath);
   if (!pathCheck.safe) return pathCheck;
 
-  // 2. Validate Read-Only files against write/delete operations
+  // 2. Validate read-only files against write/delete operations
   if (operation === "write" || operation === "delete") {
     const fileName = path.basename(resolvedPath);
-    if (context.readOnlyFiles.includes(fileName)) {
-      return { safe: false, reason: `File '${fileName}' is marked as read-only.` };
+    if (safety.readOnlyFiles.includes(fileName)) {
+      return { safe: false, reason: `File '${fileName}' is read-only.` };
     }
   }
 
-  // 3. Validate existence for specific operations
+  // 3. Validate file existence for read/delete operations
   if (operation === "read" || operation === "delete") {
     try {
       await fs.access(resolvedPath);
     } catch {
-      return { safe: false, reason: `Cannot ${operation}: File does not exist at path.` };
+      return { safe: false, reason: `File does not exist.` };
     }
   }
 
-  // 4. Prevent execute operations entirely unless explicitly handled
-  if (operation === "execute") {
-    return { safe: false, reason: "Direct execution of files is disabled for safety." };
-  }
+  // 4. Prevent direct file execution
+  if (operation === "execute") return { safe: false, reason: "Direct execution disabled." };
 
   return { safe: true };
 }

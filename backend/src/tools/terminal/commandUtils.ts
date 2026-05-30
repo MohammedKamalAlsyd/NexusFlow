@@ -2,7 +2,7 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { spawn } from "node:child_process";
 import { askForPermission } from "@/safety/interactivity.js";
-import { safetyManager } from "@/safety/safetyContext.js";
+import { configManager } from "@/config/index.js";
 
 /**
  * Spawns a shell command interactively.
@@ -52,13 +52,13 @@ const runInteractiveCommand = (cmd: string): Promise<{ stdout: string; stderr: s
 
 export const executeCommandTool = tool(
     async ({ command }) => {
-        const context = safetyManager.getContext();
+        const config = configManager.config;
 
         // Extract the actual command, ignoring directory changes
         const actualCommand = command.includes("&&") ? command.split("&&").pop()?.trim() || command : command;
 
         // 1. Safety Check: Block commands defined in safety context
-        const isBlocked = context.blockedCommands.some((blocked) =>
+        const isBlocked = config.safety.blockedCommands.some((blocked) =>
             actualCommand.toLowerCase().includes(blocked.toLowerCase())
         );
 
@@ -67,7 +67,15 @@ export const executeCommandTool = tool(
         }
 
         // 2. Human-in-the-loop: Ask before executing
-        const approved = await askForPermission("execute", actualCommand);
+        // Extract the base command (e.g., "pulumi") to avoid workspace folder name mismatch on subsequent executions
+        const baseCommand = actualCommand.split(" ")[0] || actualCommand;
+        
+        const approved = await askForPermission(
+            "commands",
+            "execute",
+            baseCommand,
+            `Agent wants to execute command:\n> ${actualCommand}`
+        );
         if (!approved) return "Operation cancelled by user.";
 
         try {
