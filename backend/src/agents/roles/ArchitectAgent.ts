@@ -1,11 +1,14 @@
 import { BaseAgent } from "@/agents/BaseAgent.js";
 import { toolManager } from "@/tools/toolRegistry.js";
+import type { DynamicStructuredTool } from "@langchain/core/tools";
 
 /**
  * ARCHITECT AGENT
  * Focus: Multi-Cloud flow, resource selection, state planning, and cost-efficiency.
  */
 export class ArchitectAgent extends BaseAgent {
+    private customTools: DynamicStructuredTool<any>[] | null = null;
+
     constructor() {
         super({
             name: "architect",
@@ -20,10 +23,11 @@ export class ArchitectAgent extends BaseAgent {
             STEP 1: THINK & PLAN
             Analyze the user's request. Decide which tools you need to query AWS or Azure to see what resources already exist.
             
-            STEP 2: EXPLORE (TOOL USAGE)
-            Call your MCP tools (like 'aws-api_call_aws' or 'azure_catalog...') to verify if buckets, databases, or infrastructure actually exist. 
-            - If you need to check AWS and Azure, call both tools sequentially or in parallel.
-            - If a tool fails, think about why and try a different command or consult the documentation.
+            STEP 2: EXPLORE (STRICT TOOL LIMITS)
+            Call your MCP tools to verify if buckets, databases, or infrastructure actually exist.
+            - CRITICAL: You are a PLANNER, not an executor. DO NOT run deep data queries (e.g., Athena SELECT statements) or start ETL jobs. Only check for resource metadata (e.g., list buckets, get tables).
+            - EFFICIENCY: Keep tool usage to an absolute minimum (max 3-5 calls). 
+            - ERROR HANDLING: If a command fails, do NOT get stuck in an infinite loop trying to fix it. If you cannot find a resource after 2 attempts, assume it does not exist and move on.
             
             STEP 3: STRATEGY SELECTION
             Based on your findings:
@@ -41,7 +45,7 @@ export class ArchitectAgent extends BaseAgent {
               "plan": "Detailed explanation of the architecture, the tools used, and what scripts need to be written."
             }
             
-            IMPORTANT: You are allowed to use your tools as many times as you need. Only output the JSON object when you are completely finished with your investigation.`,
+            IMPORTANT: Stop using tools once you have enough context to populate the JSON. Output the JSON immediately to finish your turn.`,
         });
     }
 
@@ -49,5 +53,9 @@ export class ArchitectAgent extends BaseAgent {
         // Automatically fetches the aws-api and azure-catalog tools from your new registry
         const tools = toolManager.getToolsForRole("architect");
         return this.getGraphRunnable(tools);
+    }
+
+    public setTools(tools: DynamicStructuredTool<any>[] | null): void {
+        this.customTools = tools;
     }
 }

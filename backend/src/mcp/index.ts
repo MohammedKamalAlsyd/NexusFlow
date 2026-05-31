@@ -94,6 +94,7 @@ export async function initializeMcpServers() {
             command: details.command,
             args: details.args || [],
             env: resolveEnvironmentVariables(details.env),
+            includeTools: details.includeTools || []
         };
 
         // Run the local check and pull first

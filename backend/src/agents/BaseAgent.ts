@@ -11,7 +11,7 @@ dotenv.config({ path: path.join(process.cwd(), '.env') });
 
 export class BaseAgent {
     public readonly name: string;
-    public readonly systemPrompt: string;
+    public systemPrompt: string;
     public readonly model_name: string;
     protected llm: ChatOpenAI;
 
@@ -97,5 +97,9 @@ export class BaseAgent {
 
     public get model() {
         return this.llm;
+    }
+
+    public setSystemPrompt(newPrompt: string): void {
+        this.systemPrompt = newPrompt;
     }
 }

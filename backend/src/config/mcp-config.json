@@ -20,7 +20,11 @@
         "AWS_REGION": "us-east-1",
         "AWS_ACCESS_KEY_ID": "$AWS_ACCESS_KEY_ID",
         "AWS_SECRET_ACCESS_KEY": "$AWS_SECRET_ACCESS_KEY"
-      }
+      },
+      "includeTools": [
+        "call_aws",
+        "suggest_aws_commands"
+      ]
     },
     "aws-data-processing": {
       "command": "docker",
@@ -40,7 +44,23 @@
         "AWS_REGION": "us-east-1",
         "AWS_ACCESS_KEY_ID": "$AWS_ACCESS_KEY_ID",
         "AWS_SECRET_ACCESS_KEY": "$AWS_SECRET_ACCESS_KEY"
-      }
+      },
+      "includeTools": [
+        "upload_to_s3",
+        "manage_aws_glue_jobs",
+        "manage_aws_glue_workflows",
+        "manage_aws_glue_triggers",
+        "manage_aws_glue_crawlers",
+        "manage_aws_glue_crawler_management",
+        "manage_aws_athena_query_executions",
+        "manage_aws_athena_databases_and_tables",
+        "manage_aws_emr_clusters",
+        "manage_aws_emr_ec2_steps",
+        "analyze_s3_usage_for_data_processing",
+        "get_roles_for_service",
+        "get_policies_for_role",
+        "list_s3_buckets"
+      ]
     },
     "aws-documentation": {
       "command": "docker",
@@ -49,6 +69,12 @@
         "-i",
         "--rm",
         "public.ecr.aws/awslabs-mcp/awslabs/aws-documentation-mcp-server:latest"
+      ],
+      "includeTools": [
+        "read_documentation",
+        "read_sections",
+        "recommend",
+        "search_documentation"
       ]
     },
     "azure-catalog": {
@@ -72,7 +98,21 @@
         "AZURE_CLIENT_ID": "$AZURE_CLIENT_ID",
         "AZURE_CLIENT_SECRET": "$AZURE_CLIENT_SECRET",
         "AZURE_SUBSCRIPTION_ID": "$AZURE_SUBSCRIPTION_ID"
-      }
+      },
+      "includeTools": [
+        "storage",
+        "sql",
+        "postgres",
+        "mysql",
+        "cosmos",
+        "kusto",
+        "eventhubs",
+        "servicebus",
+        "documentation",
+        "monitor",
+        "subscription_list",
+        "group_list"
+      ]
     }
   }
 }

@@ -10,6 +10,7 @@ export interface McpServerConfig {
     command: string;
     args: string[];
     env?: Record<string, string>;
+    includeTools?: string[];
 }
 
 // Define what a TextContent block looks like
@@ -23,6 +24,7 @@ export class McpClientManager {
 
     /**
     * Connects to an external MCP server, fetches its tools, and registers them.
+    * If config.includeTools is provided, only those tools are registered.
     */
     async connectToServer(config: McpServerConfig): Promise<void> {
         console.log(`\n⏳ Connecting to MCP Server: ${config.name}...`);
@@ -41,17 +43,34 @@ export class McpClientManager {
             this.clients.set(config.name, client);
             console.log(`✅ Connected to ${config.name}`);
 
-            // Fetch tools from the MCP server
+            // Fetch all tools from the MCP server
             const { tools } = await client.listTools();
 
             if (!tools || tools.length === 0) {
                 console.log(`⚠️  No tools found on server: ${config.name}`);
                 return;
             }
-            console.log(`🔌 Registering ${tools.length} tools from ${config.name}...`);
 
-            // Convert and register each tool
-            for (const mcpTool of tools) {
+            // Apply filtering if includeTools is specified
+            let toolsToRegister = tools;
+            if (config.includeTools && config.includeTools.length > 0) {
+                const includeSet = new Set(config.includeTools);
+                toolsToRegister = tools.filter(tool => includeSet.has(tool.name));
+                const excludedCount = tools.length - toolsToRegister.length;
+                console.log(
+                    `🔍 Filtering tools: ${toolsToRegister.length} of ${tools.length} tools will be registered ` +
+                    `(excluded ${excludedCount} not in includeTools).`
+                );
+                if (toolsToRegister.length === 0) {
+                    console.warn(`⚠️  No tools matched the includeTools list for server: ${config.name}`);
+                    return;
+                }
+            }
+
+            console.log(`🔌 Registering ${toolsToRegister.length} tools from ${config.name}...`);
+
+            // Convert and register each (filtered) tool
+            for (const mcpTool of toolsToRegister) {
                 const lcTool = this.createLangChainAdapter(client, mcpTool, config.name);
                 toolManager.registerDynamicTool(lcTool);
             }
@@ -60,8 +79,10 @@ export class McpClientManager {
             console.error(`❌ Failed to connect to MCP server ${config.name}:`, error.message);
         }
     }
+
     /**
      * Adapts an MCP Tool into a LangChain DynamicStructuredTool.
+     * (unchanged)
      */
     private createLangChainAdapter(client: Client, mcpTool: any, serverName: string): DynamicStructuredTool {
         // Sanitize the server name to ensure it is valid for LangChain tool names
