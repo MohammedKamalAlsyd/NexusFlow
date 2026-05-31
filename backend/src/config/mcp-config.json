@@ -1,5 +1,27 @@
 {
   "mcpServers": {
+    "aws-api": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "AWS_REGION",
+        "-e",
+        "AWS_ACCESS_KEY_ID",
+        "-e",
+        "AWS_SECRET_ACCESS_KEY",
+        "-e",
+        "AWS_SESSION_TOKEN",
+        "public.ecr.aws/awslabs-mcp/awslabs/aws-api-mcp-server:latest"
+      ],
+      "env": {
+        "AWS_REGION": "us-east-1",
+        "AWS_ACCESS_KEY_ID": "$AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY": "$AWS_SECRET_ACCESS_KEY"
+      }
+    },
     "aws-data-processing": {
       "command": "docker",
       "args": [
@@ -7,13 +29,18 @@
         "-i",
         "--rm",
         "-e",
-        "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID",
+        "AWS_REGION",
         "-e",
-        "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY",
+        "AWS_ACCESS_KEY_ID",
         "-e",
-        "AWS_REGION=$AWS_REGION",
+        "AWS_SECRET_ACCESS_KEY",
         "mcp/aws-dataprocessing-mcp-server"
-      ]
+      ],
+      "env": {
+        "AWS_REGION": "us-east-1",
+        "AWS_ACCESS_KEY_ID": "$AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY": "$AWS_SECRET_ACCESS_KEY"
+      }
     },
     "aws-documentation": {
       "command": "docker",
@@ -31,13 +58,21 @@
         "-i",
         "--rm",
         "-e",
-        "AZURE_TENANT_ID=$AZURE_TENANT_ID",
+        "AZURE_TENANT_ID",
         "-e",
-        "AZURE_CLIENT_ID=$AZURE_CLIENT_ID",
+        "AZURE_CLIENT_ID",
         "-e",
-        "AZURE_CLIENT_SECRET=$AZURE_CLIENT_SECRET",
-        "mcp/docker-mcp-catalog"
-      ]
+        "AZURE_CLIENT_SECRET",
+        "-e",
+        "AZURE_SUBSCRIPTION_ID",
+        "mcr.microsoft.com/azure-sdk/azure-mcp"
+      ],
+      "env": {
+        "AZURE_TENANT_ID": "$AZURE_TENANT_ID",
+        "AZURE_CLIENT_ID": "$AZURE_CLIENT_ID",
+        "AZURE_CLIENT_SECRET": "$AZURE_CLIENT_SECRET",
+        "AZURE_SUBSCRIPTION_ID": "$AZURE_SUBSCRIPTION_ID"
+      }
     }
   }
 }

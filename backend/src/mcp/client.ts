@@ -108,8 +108,12 @@ export class McpClientManager {
                             typeof c === 'object' && c !== null && 'type' in c && c.type === 'text'
                         );
                         const combinedText = textBlocks.map(b => b.text).join('\n');
-                        console.log(combinedText);
+                        
+                        return combinedText; 
                     }
+
+                    // Fallback for non-array content structures
+                    return JSON.stringify(result.content);
 
                 } catch (error: any) {
                     return `Execution failed: ${error.message}`;

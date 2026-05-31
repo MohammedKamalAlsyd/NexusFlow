@@ -7,7 +7,6 @@ import { configManager } from "@/config/index.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { RunnableConfig } from "@langchain/core/runnables";
-import z from "zod";
 
 // Instantiate the core agents
 const architect = new ArchitectAgent();
@@ -20,58 +19,63 @@ const dataOps = new DataOpsAgent();
  */
 export const architectNode = async (state: typeof AgentState.State, config?: RunnableConfig) => {
     console.log("🧠 [ARCHITECT]: Exploring cloud environment and planning...");
-    const userRequest = state.messages[state.messages.length - 1]?.content;
+    
+    // 1. Extract the user's original request
+    const userRequest = state.messages[0]?.content || state.messages[state.messages.length - 1]?.content;
 
-    // 1. Let the Architect use its tools to explore the environment first
     const runner = architect.getRunnable();
-    const explorePrompt = `User Request: ${userRequest}\n\nBefore planning, use your MCP tools to discover existing infrastructure.`;
-    const exploreResponse = await runner.invoke({ messages: [{ role: "user", content: explorePrompt }] }, config);
-
-    // Extract the AI's summary of what it found
-    const aiContext = exploreResponse.messages[exploreResponse.messages.length - 1]?.content || "No existing infrastructure found.";
-
-    // 2. Define the Prompt
-    const planPrompt = `User Request: ${userRequest}
-            Discovered Environment: ${aiContext}
-
-            Based on this, decide the executionStrategy. You MUST output ONLY a valid JSON object matching this exact schema:
-            {
-            "strategy": "GREENFIELD" | "BROWNFIELD_ETL" | "DATA_ANALYSIS",
-            "plan": "Detailed Markdown plan. DO NOT use markdown code blocks inside this string!"
-            }
-            Do not include any extra text outside the JSON object.`;
+    
+    const prompt = `User Request: ${userRequest}
+    
+    Execute your Operating Procedure now. 
+    1. Explore the environment using your tools.
+    2. Output your final JSON plan.`;
 
     try {
-        const response = await architect.model.invoke([
-            { role: "system", content: architect.systemPrompt },
-            { role: "user", content: planPrompt }
-        ], config);
+        // Run the agent's full inner tool-execution graph (Think -> Tool -> Think -> Tool -> JSON)
+        const response = await runner.invoke({ 
+            messages: [{ role: "user", content: prompt }] 
+        }, config);
 
-        let rawOutput = String(response.content).trim();
+        // Extract the final message from the agent
+        const finalMessage = response.messages[response.messages.length - 1];
+        let rawOutput = String(finalMessage?.content).trim();
 
-        // Remove <think> blocks if present
-        rawOutput = rawOutput.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
-
-        // Remove markdown ```json ``` wrappers if the LLM hallucinates them
+        // Robust JSON Parsing: Remove <think> blocks and markdown wrappers if the model hallucinated them
+        rawOutput = rawOutput.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
         rawOutput = rawOutput.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
 
-        const result = JSON.parse(rawOutput);
+        // Extract JSON using regex in case there is trailing conversational text
+        const jsonMatch = rawOutput.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+            throw new Error("No JSON object found in the output.");
+        }
+
+        const result = JSON.parse(jsonMatch[0]);
+
+        // Capture what tools were run to pass to the next agent (Coder) as context
+        const history = response.messages || [];
+        const toolMessages = history.filter((msg: any) => msg.role === "tool" || msg.name !== undefined);
+        const aiContext = toolMessages.map((m: any) => `[Discovery Tool Output]: ${m.content}`).join("\n");
 
         return {
             currentStep: "planning",
             executionStrategy: result.strategy,
             cloudPlan: result.plan,
-            environmentContext: { discovered: aiContext }
+            environmentContext: { discovered: aiContext || "No infrastructure discovered." },
+            messages: [finalMessage] // Update state with the final plan
         };
+
     } catch (error: any) {
         console.error("⚠️ [ARCHITECT]: Output Parsing Failed. Ensure the model returned valid JSON.", error.message);
         return {
             currentStep: "planning-failed",
             deploymentStatus: "FATAL_ERROR",
-            validationErrors: "Architect failed to generate a valid structured plan."
+            validationErrors: `Architect failed to generate a valid structured plan: ${error.message}`
         };
     }
 };
+
 
 /**
  * NODE 2: Pipeline Coder
