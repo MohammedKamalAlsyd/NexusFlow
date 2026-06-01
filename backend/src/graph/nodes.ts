@@ -16,11 +16,12 @@ const dataOps = new DataOpsAgent();
 /**
  * NODE 1: Architect (Exploration & Planning)
  * Uses MCP tools to explore the cloud, then outputs a structured JSON plan.
+ * Implements a retry loop to self-correct JSON formatting hallucinations.
  */
 export const architectNode = async (state: typeof AgentState.State, config?: RunnableConfig) => {
     console.log("🧠 [ARCHITECT]: Exploring cloud environment and planning...");
     
-    // 1. Extract the user's original request
+    // Extract the user's original request
     const userRequest = state.messages[0]?.content || state.messages[state.messages.length - 1]?.content;
 
     const runner = architect.getRunnable();
@@ -31,48 +32,71 @@ export const architectNode = async (state: typeof AgentState.State, config?: Run
     1. Explore the environment using your tools.
     2. Output your final JSON plan.`;
 
-    try {
-        // Run the agent's full inner tool-execution graph (Think -> Tool -> Think -> Tool -> JSON)
-        const response = await runner.invoke({ 
-            messages: [{ role: "user", content: prompt }] 
-        }, config);
+    // Retrieve retry limit from environment variable (default to 3)
+    const maxRetries = process.env.FORMAT_RETRY ? parseInt(process.env.FORMAT_RETRY, 10) : 3;
+    let attempt = 0;
+    
+    // Maintain conversation history so if the JSON fails, we can append the error and ask it to fix it
+    let currentMessages: any[] = [{ role: "user", content: prompt }];
 
-        // Extract the final message from the agent
-        const finalMessage = response.messages[response.messages.length - 1];
-        let rawOutput = String(finalMessage?.content).trim();
+    while (attempt < maxRetries) {
+        attempt++;
+        try {
+            // Run the agent's full inner tool-execution graph
+            const response = await runner.invoke({ messages: currentMessages }, config);
 
-        // Robust JSON Parsing: Remove <think> blocks and markdown wrappers if the model hallucinated them
-        rawOutput = rawOutput.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-        rawOutput = rawOutput.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+            // Extract the final message from the agent
+            const finalMessage = response.messages[response.messages.length - 1];
+            let rawOutput = String(finalMessage?.content).trim();
 
-        // Extract JSON using regex in case there is trailing conversational text
-        const jsonMatch = rawOutput.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) {
-            throw new Error("No JSON object found in the output.");
+            // Robust JSON Parsing: Remove <think> blocks and markdown wrappers
+            rawOutput = rawOutput.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+            rawOutput = rawOutput.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+
+            // Extract JSON using regex in case there is trailing conversational text
+            const jsonMatch = rawOutput.match(/\{[\s\S]*\}/);
+            if (!jsonMatch) {
+                throw new Error("No JSON object found in the output.");
+            }
+
+            // This is where "Bad control character" errors get thrown
+            const result = JSON.parse(jsonMatch[0]);
+
+            // ─── IF SUCCESSFUL ───────────────────────────────────────
+            // Capture what tools were run to pass to the next agent (Coder) as context
+            const history = response.messages || [];
+            const toolMessages = history.filter((msg: any) => msg.role === "tool" || msg.name !== undefined);
+            const aiContext = toolMessages.map((m: any) => `[Discovery Tool Output]: ${m.content}`).join("\n");
+
+            return {
+                currentStep: "planning",
+                executionStrategy: result.strategy,
+                cloudPlan: result.plan,
+                environmentContext: { discovered: aiContext || "No infrastructure discovered." },
+                messages: [finalMessage] // Update state with the final plan
+            };
+
+        } catch (error: any) {
+            console.warn(`⚠️ [ARCHITECT]: JSON Parse Error on attempt ${attempt}/${maxRetries}. Error: ${error.message}`);
+            
+            if (attempt >= maxRetries) {
+                return {
+                    currentStep: "planning-failed",
+                    deploymentStatus: "FATAL_ERROR",
+                    validationErrors: `Architect failed to generate a valid structured JSON plan after ${maxRetries} attempts: ${error.message}`
+                };
+            }
+
+            // ─── SELF-CORRECTION LOOP ───────────────────────────────
+            // Append the error to the message history and invoke again.
+            // By passing the history, the agent skips running the tools again and immediately fixes its JSON string.
+            currentMessages.push({ 
+                role: "user", 
+                content: `Your previous output caused a JSON parsing error: "${error.message}". 
+                This usually means you forgot to escape quotes or newlines (e.g., use \\n instead of actual newlines) inside your JSON string values. 
+                Please fix the formatting and output ONLY the valid JSON object.` 
+            });
         }
-
-        const result = JSON.parse(jsonMatch[0]);
-
-        // Capture what tools were run to pass to the next agent (Coder) as context
-        const history = response.messages || [];
-        const toolMessages = history.filter((msg: any) => msg.role === "tool" || msg.name !== undefined);
-        const aiContext = toolMessages.map((m: any) => `[Discovery Tool Output]: ${m.content}`).join("\n");
-
-        return {
-            currentStep: "planning",
-            executionStrategy: result.strategy,
-            cloudPlan: result.plan,
-            environmentContext: { discovered: aiContext || "No infrastructure discovered." },
-            messages: [finalMessage] // Update state with the final plan
-        };
-
-    } catch (error: any) {
-        console.error("⚠️ [ARCHITECT]: Output Parsing Failed. Ensure the model returned valid JSON.", error.message);
-        return {
-            currentStep: "planning-failed",
-            deploymentStatus: "FATAL_ERROR",
-            validationErrors: `Architect failed to generate a valid structured plan: ${error.message}`
-        };
     }
 };
 
@@ -133,7 +157,7 @@ export const pipelineCoderNode = async (state: typeof AgentState.State, config?:
 };
 
 /**
- * NODE 3: Deployer (The New Validator + Executor)
+ * NODE 3: Deployer (The Validator + Executor)
  * Runs 'pulumi up'. If it fails, compiler logs act as validation errors.
  */
 export const deployerNode = async (state: typeof AgentState.State, config?: RunnableConfig) => {
@@ -190,7 +214,7 @@ export const dataOpsNode = async (state: typeof AgentState.State, config?: Runna
     let prompt = "";
     let currentStepName = "";
 
-    // 1. Determine context: Are we just analyzing data, or executing a deployed pipeline?
+    // Determine context: Are we just analyzing data, or executing a deployed pipeline?
     if (state.executionStrategy === "DATA_ANALYSIS") {
         console.log("📊 [DATA OPS]: Running analysis queries via MCP...");
         currentStepName = "data-analysis-complete";

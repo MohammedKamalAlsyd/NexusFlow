@@ -40,9 +40,10 @@ export class PulumiService {
         } else {
             console.log("☁️  Using Cloud Pulumi Backend...");
             if (!process.env.PULUMI_ACCESS_TOKEN) {
-                console.warn("⚠️  PULUMI_ACCESS_TOKEN is missing but backend is set to 'cloud'. This might fail.");
+                throw new Error("❌ PULUMI_ACCESS_TOKEN is required for cloud backend but is not set.");
             }
-            // If cloud, Pulumi implicitly uses PULUMI_ACCESS_TOKEN from env variables
+            // Authenticate with cloud backend using the access token
+            loginCmd = "pulumi login && ";
         }
 
         console.log("🔄 Initializing Pulumi Stack...");

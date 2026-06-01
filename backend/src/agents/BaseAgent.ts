@@ -8,6 +8,25 @@ import path from "node:path";
 import type { AgentConfig } from "@/types/index.js";
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 
+// Shared guidelines to prevent LLMs from over-engineering
+const SYSTEM_GOLDEN_RULES = `
+
+### PRINCIPLE OF MINIMAL COMPLEXITY (Occam's Razor):
+To ensure reliable, fail-safe executions, you must always choose the simplest working architecture.
+
+1. DATA INGESTION & STORAGE:
+   - SIMPLE (Preferred): Read/write directly from S3 or Blob URIs (e.g., 'spark.read.csv("s3://bucket/raw/")'). It is completely stateless and has zero execution dependencies.
+   - COMPLEX (Avoid): Relying on Glue Crawlers, Databases, or the Data Catalog to read data. Crawlers introduce asynchronous execution steps and cold-start dependencies that easily fail.
+   - RULE: Only use a Catalog Table if the discovery tools confirm it already exists and is populated. Otherwise, use direct S3 paths.
+
+2. INFRASTRUCTURE SCALABILITY:
+   - SIMPLE (Preferred): Deploy serverless resources natively with standard defaults (e.g., S3 buckets, serverless Glue, native IAM policies).
+   - COMPLEX (Avoid): Creating custom VPCs, private subnets, NAT Gateways, or redundant Security Groups unless the user request strictly demands private networking.
+
+3. STATE & PROCESS POLLING:
+   - SIMPLE (Preferred): When monitoring jobs, pause/sleep between status checks. Run command delays (e.g., sleep 30) so you do not hit API rate-limits or exhaust your maximum agent turns.
+   - COMPLEX (Avoid): Running tight, continuous polling loops that flood the cloud APIs.
+`;
 
 export class BaseAgent {
     public readonly name: string;
@@ -17,8 +36,10 @@ export class BaseAgent {
 
     constructor(config: AgentConfig) {
         this.name = config.name;
-        this.systemPrompt = config.systemPrompt;
         this.model_name = config.model_name;
+
+        // Automatically append simplicity guidelines to the system prompt of every agent
+        this.systemPrompt = `${config.systemPrompt}\n${SYSTEM_GOLDEN_RULES}`;
 
         // 1. Load and Validate Env Variables
         const apiKey = String(process.env.OPENROUTER_API_KEY || "");
@@ -100,6 +121,7 @@ export class BaseAgent {
     }
 
     public setSystemPrompt(newPrompt: string): void {
-        this.systemPrompt = newPrompt;
+        // Keeps the Golden Rules intact even when we overwrite prompts during unit testing
+        this.systemPrompt = `${newPrompt}\n${SYSTEM_GOLDEN_RULES}`;
     }
 }
