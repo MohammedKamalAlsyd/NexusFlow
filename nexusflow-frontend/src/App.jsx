@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   ConfigProvider,
   Typography,
@@ -9,8 +9,14 @@ import {
   Flex,
   Avatar,
   Badge,
-  Tag,
   Space,
+  Modal,
+  Form,
+  Select,
+  message,
+  Spin,
+  Table,
+  Tag,
 } from "antd";
 import {
   MdSend,
@@ -20,231 +26,294 @@ import {
   MdDataObject,
   MdCloud,
   MdStorage,
-  MdWarning,
-  MdCheckCircle,
+  MdSettings,
+  MdWifiOff,
+  MdSecurity,
 } from "react-icons/md";
+import { DeleteOutlined } from "@ant-design/icons";
 
-// Standard React Flow Imports
-import ReactFlow, { Background, Controls, MarkerType } from "reactflow";
+import ReactFlow, {
+  Background,
+  Controls,
+  useNodesState,
+  useEdgesState,
+} from "reactflow";
 import "reactflow/dist/style.css";
 
 const { Title, Text } = Typography;
+const BACKEND_URL = "http://localhost:4000";
 
-// --- PREMIUM LIGHT-THEME CODE BLOCK ---
 const codeBlockStyle = {
   margin: 0,
   padding: "16px",
-  background: "#0f172a", // High-contrast terminal background for readability
+  background: "#0f172a",
   color: "#e2e8f0",
   borderRadius: "12px",
   overflow: "auto",
   fontSize: "13px",
   fontFamily: '"Fira Code", monospace',
   border: "1px solid #e2e8f0",
+  height: "100%",
 };
 
-const MOCK_PULUMI_CODE = `import pulumi
-import pulumi_aws as aws
-
-raw_bucket = aws.s3.Bucket("raw-data-lake")
-clean_bucket = aws.s3.Bucket("clean-parquet-lake")
-
-# Dynamic Self-Healing Patch: Added Role ARN definition
-glue_role = aws.iam.Role("glue-execution-role",
-    assume_role_policy='{"Version":"2012-10-17","Statement":[{"Action":"sts:AssumeRole","Principal":{"Service":"glue.amazonaws.com"},"Effect":"Allow"}]}'
-)
-
-glue_job = aws.glue.Job("etl-pyspark-job",
-    role_arn=glue_role.arn, # Configured correctly
-    command=aws.glue.JobCommandArgs(
-        script_location=f"s3://{raw_bucket.id}/scripts/clean_etl.py", 
-        python_version="3"
-    )
-)`;
-
-const MOCK_PYSPARK_CODE = `import sys
-from awsglue.utils import getResolvedOptions
-from pyspark.context import SparkContext
-from awsglue.context import GlueContext
-
-args = getResolvedOptions(sys.argv, ['JOB_NAME', 'RAW_PATH', 'CLEAN_PATH'])
-spark = GlueContext(SparkContext()).spark_session
-
-# Clean Customer Emails
-df = spark.read.csv(args['RAW_PATH'], header=True)
-cleaned = df.dropna(subset=["email"]).withColumn("email", lower(col("email")))
-
-cleaned.write.mode("overwrite").parquet(args['CLEAN_PATH'])`;
-
-// --- LIGHT-MODE REACT FLOW DESIGN ---
-const initialNodes = [
-  {
-    id: "raw-s3",
-    position: { x: 30, y: 80 },
-    data: { label: "🪣 S3 Raw Bucket" },
-    type: "input",
-    style: {
-      background: "#ffffff",
-      border: "2px solid #6366f1",
-      borderRadius: "12px",
-      padding: "12px",
-      color: "#1e293b",
-      fontWeight: 600,
-      boxShadow: "0 4px 12px rgba(99, 102, 241, 0.08)",
-    },
-  },
-  {
-    id: "glue-job",
-    position: { x: 240, y: 80 },
-    data: { label: "⚙️ AWS Glue ETL" },
-    style: {
-      background: "#ffffff",
-      border: "2px solid #f59e0b",
-      borderRadius: "12px",
-      padding: "12px",
-      color: "#1e293b",
-      fontWeight: 600,
-      boxShadow: "0 4px 12px rgba(245, 158, 11, 0.08)",
-    },
-  },
-  {
-    id: "clean-s3",
-    position: { x: 450, y: 80 },
-    data: { label: "✨ S3 Parquet Outlet" },
-    type: "output",
-    style: {
-      background: "#ffffff",
-      border: "2px solid #10b981",
-      borderRadius: "12px",
-      padding: "12px",
-      color: "#1e293b",
-      fontWeight: 600,
-      boxShadow: "0 4px 12px rgba(16, 185, 129, 0.08)",
-    },
-  },
-];
-
-const initialEdges = [
-  {
-    id: "e1",
-    source: "raw-s3",
-    target: "glue-job",
-    animated: true,
-    style: { stroke: "#6366f1", strokeWidth: 2 },
-    markerEnd: { type: MarkerType.ArrowClosed, color: "#6366f1" },
-  },
-  {
-    id: "e2",
-    source: "glue-job",
-    target: "clean-s3",
-    animated: true,
-    style: { stroke: "#f59e0b", strokeWidth: 2 },
-    markerEnd: { type: MarkerType.ArrowClosed, color: "#f59e0b" },
-  },
-];
-
-const PERSONAS = [
-  { role: "architect", name: "Cloud Architect", color: "#6366f1" },
-  { role: "coder", name: "Pipeline Coder", color: "#8b5cf6" },
-  { role: "deployer", name: "Deployer Engine", color: "#f59e0b" },
-  { role: "dataops", name: "DataOps Manager", color: "#10b981" },
-];
+const PERSONAS = {
+  architect: { role: "architect", name: "Cloud Architect", color: "#6366f1" },
+  "pipeline-coder": { role: "coder", name: "Pipeline Coder", color: "#8b5cf6" },
+  deployer: { role: "deployer", name: "Deployer Engine", color: "#f59e0b" },
+  "data-ops": { role: "dataops", name: "DataOps Manager", color: "#10b981" },
+  system: { role: "system", name: "System", color: "#64748b" },
+};
 
 export default function NexusDashboard() {
   const chatEndRef = useRef(null);
+  const [form] = Form.useForm();
 
-  // Real conversational history (8 steps representing full agent life-cycle)
+  // Initialize AntD Message properly to remove context warnings
+  const [messageApi, contextHolder] = message.useMessage();
+
+  // App States
   const [messages, setMessages] = useState([
     {
       id: 1,
       sender: "bot",
-      persona: PERSONAS[0],
+      persona: PERSONAS["architect"],
       content:
-        "Hello! I am the Cloud Architect. Tell me about the data pipeline we are designing today.",
-    },
-    {
-      id: 2,
-      sender: "user",
-      persona: null,
-      content:
-        "I need a pipeline to ingest raw sales CSV files from my existing S3 bucket, clean the customer email column, and write it back to S3 in Parquet format.",
-    },
-    {
-      id: 3,
-      sender: "bot",
-      persona: PERSONAS[0],
-      content:
-        'Understood. Scanning AWS active resources... Found matching bucket "sales-data-lake-2024". Strategy selected: BROWNFIELD_ETL. Passing blueprint to Coder Agent.',
-    },
-    {
-      id: 4,
-      sender: "bot",
-      persona: PERSONAS[1],
-      content:
-        'Coder here! I scaffolded the workspace using uv. Generated the PySpark script "etl_job.py" and initialized Pulumi IaC. Passing manifests to Deployer.',
-    },
-    {
-      id: 5,
-      sender: "bot",
-      persona: PERSONAS[2],
-      content:
-        '⚠️ PULUMI DEPLOYMENT FAILED:\nTypeError: Missing required argument "role_arn" for aws.glue.Job. Sending stack trace logs back to Coder for diagnostics.',
-    },
-    {
-      id: 6,
-      sender: "bot",
-      persona: PERSONAS[1],
-      content:
-        'Analyzing error... Ah! I forgot to map the IAM Role execution ARN. Writing fix to "__main__.py" to include iam.Role mapping. Retrying deployment.',
-    },
-    {
-      id: 7,
-      sender: "bot",
-      persona: PERSONAS[2],
-      content:
-        "Retry deployment... Success! All S3 resource hooks and AWS Glue Job definitions are active in the dev stack. Over to DataOps to trigger job run.",
-    },
-    {
-      id: 8,
-      sender: "bot",
-      persona: PERSONAS[3],
-      content:
-        "Triggered Glue job run. Polling status checks... Job status: SUCCEEDED. Inspected target S3 directory: verified cleaned parquet files exist.",
+        "Hello! I am the NexusFlow Architect. Tell me about the data pipeline we are designing today.",
     },
   ]);
-
   const [inputValue, setInputValue] = useState("");
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [isServerConnected, setIsServerConnected] = useState(true);
+
+  // Security Modal State
+  const [pendingApproval, setPendingApproval] = useState(null);
+
+  // Tracing & Artifact States
+  const [traceLogs, setTraceLogs] = useState([]);
+  const [code, setCode] = useState({
+    pulumi: "# Waiting for generation...",
+    pyspark: "# Waiting for generation...",
+  });
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+
+  // Config States
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [config, setConfig] = useState(null);
 
   useEffect(() => {
-    if (chatEndRef.current) {
-      chatEndRef.current.scrollIntoView({ behavior: "smooth" });
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, isStreaming, pendingApproval]);
+
+  // Wrapped in useCallback to prevent infinite render loops and satisfy ESLint exhaustive-deps rules
+  const fetchConfig = useCallback(() => {
+    fetch(`${BACKEND_URL}/api/config`)
+      .then((res) => res.json())
+      .then((data) => {
+        setConfig(data);
+        setIsServerConnected(true);
+        form.setFieldsValue({
+          confirmationMode: data.preferences?.confirmationMode || "manual",
+          pulumiBackend: data.pulumi?.backend || "local",
+        });
+      })
+      .catch(() => setIsServerConnected(false));
+  }, [form]);
+
+  useEffect(() => {
+    fetchConfig();
+  }, [fetchConfig]);
+
+  // Save Config & Allowlist
+  const handleSaveConfig = async (values) => {
+    try {
+      const payload = {
+        preferences: { confirmationMode: values.confirmationMode },
+        pulumi: { backend: values.pulumiBackend },
+      };
+      const res = await fetch(`${BACKEND_URL}/api/config`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      setConfig(data.config);
+      messageApi.success("Configuration updated!");
+      setIsSettingsOpen(false);
+    } catch {
+      messageApi.error("Failed to save config.");
     }
-  }, [messages]);
+  };
 
-  const handleSendMessage = () => {
-    if (!inputValue.trim()) return;
+  // Remove an item from the Allowlist
+  const handleRemoveAllowlistItem = async (category, target) => {
+    const updatedList = { ...config.allowList };
+    updatedList[category] = updatedList[category].filter(
+      (rule) => rule.target !== target,
+    );
 
-    // Standard user prompt append
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/config`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ allowList: updatedList }),
+      });
+      const data = await res.json();
+      setConfig(data.config);
+      messageApi.success("Allowlist updated.");
+    } catch {
+      messageApi.error("Failed to update allowlist.");
+    }
+  };
+
+  // Handle Security Approval
+  const handleApprove = async (decision) => {
+    if (!pendingApproval) return;
+    try {
+      await fetch(`${BACKEND_URL}/api/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: pendingApproval.id, decision }),
+      });
+      setPendingApproval(null);
+      if (decision === "allow_always") fetchConfig();
+    } catch {
+      messageApi.error("Failed to send approval to backend.");
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!inputValue.trim() || isStreaming || !isServerConnected) return;
+
+    const userPrompt = inputValue;
     setMessages((prev) => [
       ...prev,
-      { id: Date.now(), sender: "user", content: inputValue },
+      { id: Date.now(), sender: "user", content: userPrompt },
     ]);
     setInputValue("");
+    setIsStreaming(true);
 
-    // Quick reactive swarm response
-    setTimeout(() => {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now() + 1,
-          sender: "bot",
-          persona: PERSONAS[3],
-          content:
-            "Analysis request received. Scoping pipeline context and tracing schema validation hooks.",
-        },
-      ]);
-    }, 1000);
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: userPrompt }),
+      });
+
+      if (!response.body) throw new Error("Stream not supported.");
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() || "";
+
+        for (const part of parts) {
+          const eventMatch = part.match(/event: (.*)\n/);
+          const dataMatch = part.match(/data: (.*)/);
+
+          if (eventMatch && dataMatch) {
+            const eventType = eventMatch[1].trim();
+            const data = JSON.parse(dataMatch[1].trim());
+
+            if (eventType === "permission_request") {
+              setPendingApproval(data);
+            } else if (eventType === "system_log") {
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: Date.now() + Math.random(),
+                  sender: "system",
+                  persona: PERSONAS["system"],
+                  content: data.message,
+                },
+              ]);
+            } else if (eventType === "node_update") {
+              const persona = PERSONAS[data.node] || PERSONAS["system"];
+
+              let chatContent = data.message;
+              if (data.errors) chatContent += `\n\n⚠️ ERRORS:\n${data.errors}`;
+
+              if (chatContent) {
+                setMessages((prev) => [
+                  ...prev,
+                  {
+                    id: Date.now() + Math.random(),
+                    sender: "bot",
+                    persona,
+                    content: chatContent,
+                  },
+                ]);
+              }
+
+              setTraceLogs((prev) => [
+                ...prev,
+                {
+                  color: data.errors ? "red" : "blue",
+                  node: data.node,
+                  step: data.step || "Processing",
+                },
+              ]);
+
+              if (data.diagram?.nodes?.length > 0) {
+                setNodes(data.diagram.nodes);
+                setEdges(data.diagram.edges || []);
+              }
+
+              if (data.code?.pulumi || data.code?.pyspark) {
+                setCode({
+                  pulumi: data.code.pulumi || code.pulumi,
+                  pyspark: data.code.pyspark || code.pyspark,
+                });
+              }
+            } else if (
+              eventType === "workflow_complete" ||
+              eventType === "error"
+            ) {
+              if (eventType === "error") messageApi.error(data.message);
+              setIsStreaming(false);
+            }
+          }
+        }
+      }
+    } catch {
+      messageApi.error("Connection stream failed.");
+      setIsStreaming(false);
+    }
   };
+
+  const allowlistColumns = (category) => [
+    {
+      title: "Target",
+      dataIndex: "target",
+      key: "target",
+      render: (text) => <Text code>{text}</Text>,
+    },
+    {
+      title: "Operation",
+      dataIndex: "operation",
+      key: "operation",
+      render: (text) => <Tag color="blue">{text}</Tag>,
+    },
+    {
+      title: "Action",
+      key: "action",
+      render: (_, record) => (
+        <Button
+          type="text"
+          danger
+          icon={<DeleteOutlined />}
+          onClick={() => handleRemoveAllowlistItem(category, record.target)}
+        />
+      ),
+    },
+  ];
 
   return (
     <ConfigProvider
@@ -252,17 +321,15 @@ export default function NexusDashboard() {
         token: {
           fontFamily: '"Inter", sans-serif',
           borderRadius: 16,
-          colorPrimary: "#4f46e5", // Sleek Indigo accent
-          colorBgBase: "#f8fafc",
-          colorBgContainer: "#ffffff",
-          colorBorder: "#e2e8f0",
+          colorPrimary: "#4f46e5",
         },
         components: {
           Tabs: { itemColor: "#64748b", itemSelectedColor: "#4f46e5" },
         },
       }}
     >
-      {/* 2-Column Responsive Dashboard with 40/60 viewport split */}
+      {contextHolder}
+
       <div
         style={{
           height: "100vh",
@@ -272,10 +339,9 @@ export default function NexusDashboard() {
           display: "flex",
           gap: "20px",
           boxSizing: "border-box",
-          overflow: "hidden",
         }}
       >
-        {/* LEFT COLUMN: Expanded Interactive Chat Console (40% width) */}
+        {/* LEFT COLUMN: Chat Console */}
         <div
           style={{
             width: "40%",
@@ -288,44 +354,77 @@ export default function NexusDashboard() {
             border: "1px solid #e2e8f0",
           }}
         >
-          {/* Header */}
           <div
             style={{
               padding: "24px 24px 16px",
               borderBottom: "1px solid #f1f5f9",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
             }}
           >
             <Flex align="center" gap="small">
               <div
                 style={{
-                  background: "#eef2ff",
+                  background: isServerConnected ? "#eef2ff" : "#fef2f2",
                   padding: "8px",
                   borderRadius: "12px",
                   display: "flex",
                 }}
               >
-                <MdCloud size={20} color="#4f46e5" />
+                {isServerConnected ? (
+                  <MdCloud size={20} color="#4f46e5" />
+                ) : (
+                  <MdWifiOff size={20} color="#dc2626" />
+                )}
               </div>
-              <Title
-                level={5}
-                style={{ margin: 0, fontWeight: 600, color: "#0f172a" }}
-              >
-                NexusFlow Swarm
-              </Title>
+              <div>
+                <Title
+                  level={5}
+                  style={{ margin: 0, fontWeight: 600, color: "#0f172a" }}
+                >
+                  NexusFlow Swarm
+                </Title>
+                {!isServerConnected ? (
+                  <Badge
+                    status="error"
+                    text={
+                      <span
+                        style={{
+                          color: "#dc2626",
+                          fontSize: "12px",
+                          cursor: "pointer",
+                        }}
+                        onClick={fetchConfig}
+                      >
+                        Server Offline - Retry
+                      </span>
+                    }
+                  />
+                ) : (
+                  <Badge
+                    status={isStreaming ? "processing" : "success"}
+                    text={
+                      <span style={{ color: "#475569", fontSize: "12px" }}>
+                        {isStreaming
+                          ? pendingApproval
+                            ? "Waiting for Human..."
+                            : "Swarm Executing..."
+                          : "Swarm Ready"}
+                      </span>
+                    }
+                  />
+                )}
+              </div>
             </Flex>
-            <div style={{ marginTop: 12 }}>
-              <Badge
-                status="processing"
-                text={
-                  <span style={{ color: "#475569", fontSize: "12px" }}>
-                    Swarm Ready
-                  </span>
-                }
-              />
-            </div>
+            <Button
+              type="text"
+              icon={<MdSettings size={20} />}
+              onClick={() => setIsSettingsOpen(true)}
+              disabled={!isServerConnected}
+            />
           </div>
 
-          {/* Messages Feed */}
           <div
             style={{
               flex: 1,
@@ -343,6 +442,7 @@ export default function NexusDashboard() {
                   display: "flex",
                   flexDirection: "column",
                   alignItems: msg.sender === "user" ? "flex-end" : "flex-start",
+                  width: "100%",
                 }}
               >
                 {msg.sender === "bot" && (
@@ -368,39 +468,57 @@ export default function NexusDashboard() {
                     background:
                       msg.sender === "user"
                         ? "#4f46e5"
-                        : msg.content.includes("⚠️")
-                          ? "#fef2f2"
-                          : "#f1f5f9",
+                        : msg.sender === "system"
+                          ? "#f8fafc"
+                          : msg.content.includes("⚠️")
+                            ? "#fef2f2"
+                            : "#f1f5f9",
                     color:
                       msg.sender === "user"
                         ? "#ffffff"
-                        : msg.content.includes("⚠️")
-                          ? "#991b1b"
-                          : "#334155",
-                    padding: "12px 16px",
+                        : msg.sender === "system"
+                          ? "#64748b"
+                          : msg.content.includes("⚠️")
+                            ? "#991b1b"
+                            : "#334155",
+                    padding: msg.sender === "system" ? "8px 12px" : "12px 16px",
                     borderRadius:
                       msg.sender === "user"
                         ? "16px 16px 4px 16px"
                         : "4px 16px 16px 16px",
                     maxWidth: "90%",
-                    fontSize: "13.5px",
+                    fontSize: msg.sender === "system" ? "12px" : "13.5px",
                     lineHeight: "1.5",
                     border: msg.content.includes("⚠️")
                       ? "1px solid #fee2e2"
-                      : msg.sender === "bot"
-                        ? "1px solid #e2e8f0"
+                      : msg.sender === "system"
+                        ? "1px dashed #cbd5e1"
                         : "none",
-                    whiteSpace: "pre-line", // Preserve spacing for logs
+                    whiteSpace: "pre-wrap",
                   }}
                 >
                   {msg.content}
                 </div>
               </div>
             ))}
+            {isStreaming && !pendingApproval && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  padding: "12px 16px",
+                }}
+              >
+                <Spin size="small" />{" "}
+                <Text type="secondary" style={{ fontSize: "12px" }}>
+                  Thinking...
+                </Text>
+              </div>
+            )}
             <div ref={chatEndRef} />
           </div>
 
-          {/* Input Prompt */}
           <div
             style={{
               padding: "20px",
@@ -411,16 +529,23 @@ export default function NexusDashboard() {
           >
             <Input
               size="large"
-              placeholder="Prompt the swarm..."
+              placeholder={
+                isServerConnected
+                  ? "Prompt the swarm..."
+                  : "Waiting for backend server..."
+              }
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onPressEnter={handleSendMessage}
+              disabled={isStreaming || !isServerConnected}
               suffix={
                 <Button
                   type="primary"
                   shape="circle"
                   icon={<MdSend size={14} />}
                   onClick={handleSendMessage}
+                  loading={isStreaming}
+                  disabled={!isServerConnected}
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -437,7 +562,7 @@ export default function NexusDashboard() {
           </div>
         </div>
 
-        {/* RIGHT COLUMN: Created Assets & Diagram Canvas (60% width) */}
+        {/* RIGHT COLUMN: Assets & Diagram */}
         <div
           style={{
             width: "60%",
@@ -447,16 +572,13 @@ export default function NexusDashboard() {
             minWidth: 0,
           }}
         >
-          {/* React Flow Cloud Diagram Workspace (Top Half) */}
           <div
             style={{
               flex: 1.2,
               background: "#ffffff",
               borderRadius: "24px",
               position: "relative",
-              boxShadow: "0 4px 20px -2px rgba(0,0,0,0.03)",
               border: "1px solid #e2e8f0",
-              overflow: "hidden",
               display: "flex",
               flexDirection: "column",
             }}
@@ -465,24 +587,21 @@ export default function NexusDashboard() {
               style={{
                 padding: "16px 24px",
                 borderBottom: "1px solid #f1f5f9",
-                background: "#fff",
                 zIndex: 10,
               }}
             >
               <Space>
                 <MdArchitecture size={18} color="#4f46e5" />
-                <Text strong style={{ color: "#0f172a" }}>
-                  Live Architecture Preview
-                </Text>
+                <Text strong>Live Architecture Preview</Text>
               </Space>
             </div>
-
             <div style={{ flex: 1, width: "100%", height: "100%" }}>
               <ReactFlow
-                nodes={initialNodes}
-                edges={initialEdges}
+                nodes={nodes}
+                edges={edges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
                 fitView
-                attributionPosition="bottom-right"
               >
                 <Background color="#94a3b8" gap={16} size={1} />
                 <Controls />
@@ -490,14 +609,12 @@ export default function NexusDashboard() {
             </div>
           </div>
 
-          {/* Technical Assets: Code Tabs & Tracing (Bottom Half) */}
           <div
             style={{
               flex: 1,
               background: "#ffffff",
               borderRadius: "24px",
               padding: "12px 24px 24px",
-              boxShadow: "0 4px 20px -2px rgba(0,0,0,0.03)",
               border: "1px solid #e2e8f0",
               display: "flex",
               flexDirection: "column",
@@ -511,40 +628,34 @@ export default function NexusDashboard() {
                 {
                   key: "code1",
                   label: (
-                    <span
-                      style={{ display: "flex", alignItems: "center", gap: 6 }}
-                    >
-                      <MdCode size={16} /> Pulumi Python
+                    <span>
+                      <MdCode /> Pulumi Python
                     </span>
                   ),
                   children: (
                     <pre style={codeBlockStyle}>
-                      <code>{MOCK_PULUMI_CODE}</code>
+                      <code>{code.pulumi}</code>
                     </pre>
                   ),
                 },
                 {
                   key: "code2",
                   label: (
-                    <span
-                      style={{ display: "flex", alignItems: "center", gap: 6 }}
-                    >
-                      <MdDataObject size={16} /> PySpark ETL
+                    <span>
+                      <MdDataObject /> PySpark ETL
                     </span>
                   ),
                   children: (
                     <pre style={codeBlockStyle}>
-                      <code>{MOCK_PYSPARK_CODE}</code>
+                      <code>{code.pyspark}</code>
                     </pre>
                   ),
                 },
                 {
                   key: "trace",
                   label: (
-                    <span
-                      style={{ display: "flex", alignItems: "center", gap: 6 }}
-                    >
-                      <MdStorage size={16} /> Live Trace
+                    <span>
+                      <MdStorage /> Live Trace
                     </span>
                   ),
                   children: (
@@ -555,75 +666,20 @@ export default function NexusDashboard() {
                         borderRadius: "12px",
                         overflowY: "auto",
                         border: "1px solid #e2e8f0",
+                        height: "100%",
                       }}
                     >
                       <Timeline
-                        items={[
-                          {
-                            color: "green",
-                            children: (
-                              <span
-                                style={{ color: "#475569", fontSize: "12px" }}
-                              >
-                                ArchitectNode: Discovered sales-data-lake-2024
-                                S3 bucket
-                              </span>
-                            ),
-                          },
-                          {
-                            color: "blue",
-                            children: (
-                              <span
-                                style={{ color: "#475569", fontSize: "12px" }}
-                              >
-                                PipelineCoderNode: Pulumi / PySpark manifests
-                                compiled
-                              </span>
-                            ),
-                          },
-                          {
-                            color: "red",
-                            children: (
-                              <span
-                                style={{ color: "#475569", fontSize: "12px" }}
-                              >
-                                DeployerNode: Pulumi Up failed (missing role_arn
-                                parameter)
-                              </span>
-                            ),
-                          },
-                          {
-                            color: "purple",
-                            children: (
-                              <span
-                                style={{ color: "#475569", fontSize: "12px" }}
-                              >
-                                PipelineCoderNode: Self-healed deployment
-                                template with fixed IAM block
-                              </span>
-                            ),
-                          },
-                          {
-                            color: "green",
-                            children: (
-                              <span
-                                style={{ color: "#475569", fontSize: "12px" }}
-                              >
-                                DeployerNode: Stack provisioned successfully
-                              </span>
-                            ),
-                          },
-                          {
-                            color: "green",
-                            children: (
-                              <span
-                                style={{ color: "#475569", fontSize: "12px" }}
-                              >
-                                DataOpsNode: ETL Output validated
-                              </span>
-                            ),
-                          },
-                        ]}
+                        items={traceLogs.map((log) => ({
+                          color: log.color,
+                          children: (
+                            <span
+                              style={{ color: "#475569", fontSize: "12px" }}
+                            >
+                              <b>[{log.node}]</b> {log.step}
+                            </span>
+                          ),
+                        }))}
                       />
                     </div>
                   ),
@@ -633,6 +689,153 @@ export default function NexusDashboard() {
           </div>
         </div>
       </div>
+
+      {/* SECURITY APPROVAL MODAL */}
+      <Modal
+        title={
+          <Space>
+            <MdSecurity color="#dc2626" /> Action Requires Approval
+          </Space>
+        }
+        open={!!pendingApproval}
+        closable={false}
+        maskClosable={false}
+        footer={[
+          <Button key="deny" danger onClick={() => handleApprove("deny")}>
+            Deny
+          </Button>,
+          <Button key="once" onClick={() => handleApprove("allow_once")}>
+            Allow Once
+          </Button>,
+          <Button
+            key="always"
+            type="primary"
+            onClick={() => handleApprove("allow_always")}
+          >
+            Allow Always
+          </Button>,
+        ]}
+      >
+        <div style={{ padding: "16px 0" }}>
+          <Text type="secondary">{pendingApproval?.displayMessage}</Text>
+          <div
+            style={{
+              marginTop: 16,
+              padding: 12,
+              background: "#f8fafc",
+              borderRadius: 8,
+              border: "1px dashed #cbd5e1",
+            }}
+          >
+            <p style={{ margin: 0 }}>
+              <b>Category:</b> {pendingApproval?.category}
+            </p>
+            <p style={{ margin: 0 }}>
+              <b>Operation:</b> {pendingApproval?.operation}
+            </p>
+            <p style={{ margin: 0 }}>
+              <b>Target:</b> <Text code>{pendingApproval?.target}</Text>
+            </p>
+          </div>
+        </div>
+      </Modal>
+
+      {/* SETTINGS MODAL */}
+      <Modal
+        title="NexusFlow Settings"
+        open={isSettingsOpen}
+        onCancel={() => setIsSettingsOpen(false)}
+        onOk={() => form.submit()}
+        okText="Save Changes"
+        width={600}
+      >
+        <Tabs
+          defaultActiveKey="general"
+          items={[
+            {
+              key: "general",
+              label: "General",
+              children: (
+                <Form
+                  form={form}
+                  layout="vertical"
+                  onFinish={handleSaveConfig}
+                  style={{ marginTop: 20 }}
+                >
+                  <Form.Item
+                    name="confirmationMode"
+                    label="Execution Safety Mode (HITL)"
+                  >
+                    <Select>
+                      <Select.Option value="manual">
+                        Manual (Prompt for Approval)
+                      </Select.Option>
+                      <Select.Option value="auto">
+                        Auto-Approve (Autonomous)
+                      </Select.Option>
+                    </Select>
+                  </Form.Item>
+                  <Form.Item name="pulumiBackend" label="Pulumi Backend">
+                    <Select>
+                      <Select.Option value="local">
+                        Local (File system)
+                      </Select.Option>
+                      <Select.Option value="cloud">
+                        Cloud (requires PULUMI_ACCESS_TOKEN)
+                      </Select.Option>
+                    </Select>
+                  </Form.Item>
+                </Form>
+              ),
+            },
+            {
+              key: "allowlist",
+              label: "Allowlist",
+              children: (
+                <div style={{ marginTop: 10 }}>
+                  <Text type="secondary">
+                    Commands and files that are automatically approved during
+                    execution.
+                  </Text>
+
+                  <Title level={5} style={{ marginTop: 16 }}>
+                    Commands
+                  </Title>
+                  <Table
+                    size="small"
+                    dataSource={config?.allowList?.commands || []}
+                    columns={allowlistColumns("commands")}
+                    pagination={false}
+                    rowKey="target"
+                  />
+
+                  <Title level={5} style={{ marginTop: 16 }}>
+                    Files
+                  </Title>
+                  <Table
+                    size="small"
+                    dataSource={config?.allowList?.files || []}
+                    columns={allowlistColumns("files")}
+                    pagination={false}
+                    rowKey="target"
+                  />
+
+                  <Title level={5} style={{ marginTop: 16 }}>
+                    MCP Tools
+                  </Title>
+                  <Table
+                    size="small"
+                    dataSource={config?.allowList?.mcp || []}
+                    columns={allowlistColumns("mcp")}
+                    pagination={false}
+                    rowKey="target"
+                  />
+                </div>
+              ),
+            },
+          ]}
+        />
+      </Modal>
     </ConfigProvider>
   );
 }

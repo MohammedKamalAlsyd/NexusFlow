@@ -18,6 +18,12 @@ export const AgentState = Annotation.Root({
         default: () => "reception",
     }),
 
+    // Diagram data in React Flow format to visualize the architecture plan. Updated by DiagramGeneratorAgent and read by the Frontend.
+    diagram: Annotation<{ nodes: any[], edges: any[] }>({
+        reducer: (curr, next) => next ?? curr,
+        default: () => ({ nodes: [], edges: [] }),
+    }),
+
     // ==========================================
     // CONTEXT & DISCOVERY
     // ==========================================

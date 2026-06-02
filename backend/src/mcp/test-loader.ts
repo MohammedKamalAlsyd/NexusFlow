@@ -1,9 +1,11 @@
+import "dotenv/config";
+import * as dotenv from "dotenv";
 import { initializeMcpServers } from "./index.js";
 import { toolManager } from "../tools/toolRegistry.js";
 import { mcpManager } from "./client.js";
 
-import * as dotenv from "dotenv";
-dotenv.config(); // Load .env file for the $GITHUB_TOKEN injection
+import path from "path";
+dotenv.config({ path: path.join(process.cwd(), '.env') }); // Load .env file for the $GITHUB_TOKEN injection
 
 async function runTest() {
     console.log("=== Testing MCP Configuration & Loading ===");

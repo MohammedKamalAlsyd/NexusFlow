@@ -9,14 +9,16 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsc",
-    "start": "tsx dist/cli/index.js",
+    "start": "tsx src/server.ts",
     "dev": "tsx src/index.ts",
     "mcp:inspect:github": "npx @modelcontextprotocol/inspector docker run -i --rm -e GITHUB_PERSONAL_ACCESS_TOKEN=$GITHUB_TOKEN mcp/github",
     "mcp:inspect:postgres": "npx @modelcontextprotocol/inspector docker run -i --rm -e DATABASE_URL=$DATABASE_URL mcp/postgres",
     "test:mcp-loader": "npx tsx src/mcp/test-loader.ts"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
     "@types/diff": "^7.0.2",
+    "@types/express": "^5.0.6",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^25.6.2",
     "ts-node": "^10.9.2",
@@ -34,8 +36,10 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@opentelemetry/sdk-node": "^0.218.0",
     "@tavily/core": "^0.7.3",
+    "cors": "^2.8.6",
     "diff": "^9.0.0",
     "dotenv": "^17.4.2",
+    "express": "^5.2.1",
     "js-yaml": "^4.1.1",
     "jsonrepair": "^3.14.0",
     "tsx": "^4.21.0",

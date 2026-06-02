@@ -2,6 +2,7 @@ import { AgentState } from "@/graph/state.js";
 import { ArchitectAgent } from "@/agents/roles/ArchitectAgent.js";
 import { PipelineCoderAgent } from "@/agents/roles/PipelineCoderAgent.js";
 import { DataOpsAgent } from "@/agents/roles/DataOpsAgent.js";
+import { DiagramGeneratorAgent } from "@/agents/roles/DiagramGeneratorAgent.js";
 import { PulumiService } from "@/services/PulumiService.js";
 import { configManager } from "@/config/index.js";
 import fs from "node:fs/promises";
@@ -12,6 +13,7 @@ import type { RunnableConfig } from "@langchain/core/runnables";
 const architect = new ArchitectAgent();
 const pipelineCoder = new PipelineCoderAgent();
 const dataOps = new DataOpsAgent();
+const diagramGenerator = new DiagramGeneratorAgent();
 
 /**
  * NODE 1: Architect (Exploration & Planning)
@@ -68,11 +70,15 @@ export const architectNode = async (state: typeof AgentState.State, config?: Run
             const toolMessages = history.filter((msg: any) => msg.role === "tool" || msg.name !== undefined);
             const aiContext = toolMessages.map((m: any) => `[Discovery Tool Output]: ${m.content}`).join("\n");
 
+            console.log("🎨 [ARCHITECT]: Drafting UI Architecture Diagram...");
+            const uiDiagram = await diagramGenerator.generateReactFlowJSON(result.plan);
+
             return {
                 currentStep: "planning",
                 executionStrategy: result.strategy,
                 cloudPlan: result.plan,
                 environmentContext: { discovered: aiContext || "No infrastructure discovered." },
+                diagram: uiDiagram,
                 messages: [finalMessage] // Update state with the final plan
             };
 
