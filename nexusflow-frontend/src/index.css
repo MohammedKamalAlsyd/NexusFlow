@@ -1,0 +1,90 @@
+:root {
+  font-family:
+    "Inter",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    Arial,
+    sans-serif;
+  background-color: #f3f4f6;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden; /* App handles its own scrolling */
+}
+
+/* Minimalist Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* IDE Style Code Viewer */
+.ide-container {
+  background-color: #0f172a;
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.ide-header {
+  background-color: #1e293b;
+  padding: 8px 16px;
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid #334155;
+  color: #94a3b8;
+  font-size: 12px;
+  align-items: center;
+}
+
+.ide-content {
+  padding: 16px;
+  margin: 0;
+  color: #e2e8f0;
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* Agent Avatar Colors */
+.avatar-architect {
+  background-color: #f0fdf4;
+  color: #16a34a;
+}
+.avatar-coder {
+  background-color: #eff6ff;
+  color: #2563eb;
+}
+.avatar-ops {
+  background-color: #fdf4ff;
+  color: #c026d3;
+}
+.avatar-system {
+  background-color: #fff1f2;
+  color: #e11d48;
+}
+
+.artifact-panel .ant-tabs-nav {
+  margin-bottom: 0 !important;
+  padding: 0 16px;
+  background: #fff;
+  border-bottom: 1px solid #e2e8f0;
+}
