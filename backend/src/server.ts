@@ -1,5 +1,6 @@
 // backend/src/server.ts
 import "dotenv/config";
+import { langfuseHandler } from "./tracing/index.js";
 import express from "express";
 import cors from "cors";
 import * as dotenv from "dotenv";
@@ -8,7 +9,7 @@ import { configManager } from "./config/index.js";
 import { initializeMcpServers } from "./mcp/index.js";
 import { appGraph } from "./graph/workflow.js";
 import { HumanMessage } from "@langchain/core/messages";
-import { approvalEmitter, resolvePermission } from "./safety/interactivity.js";
+import { resolvePermission } from "./safety/interactivity.js";
 import fs from "node:fs/promises";
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
@@ -96,9 +97,14 @@ app.post("/api/chat", async (req, res) => {
         const initialState = { messages: [new HumanMessage(prompt)] };
 
         // 2. Run the LangGraph Stream
-        const stream = await appGraph.stream(initialState, {
-            streamMode: "updates",
-            recursionLimit: 50
+        const sessionId = `chat-session-${Date.now()}`;
+        const stream = await appGraph.stream(initialState, { 
+            streamMode: "updates", 
+            recursionLimit: 50,
+            callbacks: [langfuseHandler],
+            metadata: {
+                langfuseSessionId: sessionId
+            }
         });
 
         // 3. Iterate through node executions
