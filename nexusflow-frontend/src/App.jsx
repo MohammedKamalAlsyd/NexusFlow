@@ -17,6 +17,7 @@ import {
   Spin,
   Table,
   Tag,
+  Tooltip,
 } from "antd";
 import {
   MdSend,
@@ -29,6 +30,7 @@ import {
   MdSettings,
   MdWifiOff,
   MdSecurity,
+  MdDelete,
 } from "react-icons/md";
 import { DeleteOutlined } from "@ant-design/icons";
 
@@ -61,29 +63,32 @@ const PERSONAS = {
   "pipeline-coder": { role: "coder", name: "Pipeline Coder", color: "#8b5cf6" },
   deployer: { role: "deployer", name: "Deployer Engine", color: "#f59e0b" },
   "data-ops": { role: "dataops", name: "DataOps Manager", color: "#10b981" },
-  system: { role: "system", name: "System", color: "#64748b" },
+  system: { role: "system", name: "System Logs", color: "#64748b" },
 };
+
+const DEFAULT_MESSAGES = [
+  {
+    id: 1,
+    sender: "bot",
+    persona: PERSONAS["architect"],
+    content:
+      "Hello! I am the NexusFlow Architect. Tell me about the data pipeline we are designing today.",
+  },
+];
 
 export default function NexusDashboard() {
   const chatEndRef = useRef(null);
   const [form] = Form.useForm();
-
-  // Initialize AntD Message properly to remove context warnings
   const [messageApi, contextHolder] = message.useMessage();
 
-  // App States
-  const [messages, setMessages] = useState([
-    {
-      id: 1,
-      sender: "bot",
-      persona: PERSONAS["architect"],
-      content:
-        "Hello! I am the NexusFlow Architect. Tell me about the data pipeline we are designing today.",
-    },
-  ]);
+  // App & Session States
+  const [messages, setMessages] = useState(DEFAULT_MESSAGES);
   const [inputValue, setInputValue] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [isServerConnected, setIsServerConnected] = useState(true);
+  const [currentSessionId, setCurrentSessionId] = useState(
+    () => Date.now().toString(),
+  );
 
   // Security Modal State
   const [pendingApproval, setPendingApproval] = useState(null);
@@ -105,7 +110,6 @@ export default function NexusDashboard() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isStreaming, pendingApproval]);
 
-  // Wrapped in useCallback to prevent infinite render loops and satisfy ESLint exhaustive-deps rules
   const fetchConfig = useCallback(() => {
     fetch(`${BACKEND_URL}/api/config`)
       .then((res) => res.json())
@@ -124,7 +128,21 @@ export default function NexusDashboard() {
     fetchConfig();
   }, [fetchConfig]);
 
-  // Save Config & Allowlist
+  // Clear Chat, Canvas, and reset Backend Session
+  const handleClearChat = () => {
+    setMessages(DEFAULT_MESSAGES);
+    setTraceLogs([]);
+    setNodes([]);
+    setEdges([]);
+    setCode({
+      pulumi: "# Waiting for generation...",
+      pyspark: "# Waiting for generation...",
+    });
+    setCurrentSessionId(Date.now().toString()); // Start a fresh tracking ID
+    messageApi.success("Workspace cleared.");
+  };
+
+  // Save Settings Config
   const handleSaveConfig = async (values) => {
     try {
       const payload = {
@@ -151,7 +169,6 @@ export default function NexusDashboard() {
     updatedList[category] = updatedList[category].filter(
       (rule) => rule.target !== target,
     );
-
     try {
       const res = await fetch(`${BACKEND_URL}/api/config`, {
         method: "POST",
@@ -166,7 +183,7 @@ export default function NexusDashboard() {
     }
   };
 
-  // Handle Security Approval
+  // Handle Security Modal actions (Approval / Rejection)
   const handleApprove = async (decision) => {
     if (!pendingApproval) return;
     try {
@@ -179,6 +196,21 @@ export default function NexusDashboard() {
       if (decision === "allow_always") fetchConfig();
     } catch {
       messageApi.error("Failed to send approval to backend.");
+    }
+  };
+
+  // Halt Active Stream Generation via AbortController Map
+  const handleStopGeneration = async () => {
+    setIsStreaming(false);
+    try {
+      await fetch(`${BACKEND_URL}/api/stop`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: currentSessionId }),
+      });
+      messageApi.info("Workflow execution halted.");
+    } catch {
+      messageApi.error("Failed to stop generation stream.");
     }
   };
 
@@ -196,7 +228,10 @@ export default function NexusDashboard() {
     try {
       const response = await fetch(`${BACKEND_URL}/api/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Session-ID": currentSessionId,
+        },
         body: JSON.stringify({ prompt: userPrompt }),
       });
 
@@ -238,7 +273,8 @@ export default function NexusDashboard() {
               const persona = PERSONAS[data.node] || PERSONAS["system"];
 
               let chatContent = data.message;
-              if (data.errors) chatContent += `\n\n⚠️ ERRORS:\n${data.errors}`;
+              if (data.errors)
+                chatContent += `\n\n⚠️ DIAGNOSTIC ERRORS:\n${data.errors}`;
 
               if (chatContent) {
                 setMessages((prev) => [
@@ -329,7 +365,6 @@ export default function NexusDashboard() {
       }}
     >
       {contextHolder}
-
       <div
         style={{
           height: "100vh",
@@ -417,12 +452,25 @@ export default function NexusDashboard() {
                 )}
               </div>
             </Flex>
-            <Button
-              type="text"
-              icon={<MdSettings size={20} />}
-              onClick={() => setIsSettingsOpen(true)}
-              disabled={!isServerConnected}
-            />
+            <Space>
+              <Tooltip title="Clear Chat & Workspace">
+                <Button
+                  type="text"
+                  danger
+                  icon={<MdDelete size={20} />}
+                  onClick={handleClearChat}
+                  disabled={isStreaming}
+                />
+              </Tooltip>
+              <Tooltip title="Settings">
+                <Button
+                  type="text"
+                  icon={<MdSettings size={20} />}
+                  onClick={() => setIsSettingsOpen(true)}
+                  disabled={!isServerConnected}
+                />
+              </Tooltip>
+            </Space>
           </div>
 
           <div
@@ -469,7 +517,7 @@ export default function NexusDashboard() {
                       msg.sender === "user"
                         ? "#4f46e5"
                         : msg.sender === "system"
-                          ? "#f8fafc"
+                          ? "#1e293b"
                           : msg.content.includes("⚠️")
                             ? "#fef2f2"
                             : "#f1f5f9",
@@ -477,7 +525,7 @@ export default function NexusDashboard() {
                       msg.sender === "user"
                         ? "#ffffff"
                         : msg.sender === "system"
-                          ? "#64748b"
+                          ? "#38bdf8"
                           : msg.content.includes("⚠️")
                             ? "#991b1b"
                             : "#334155",
@@ -492,9 +540,13 @@ export default function NexusDashboard() {
                     border: msg.content.includes("⚠️")
                       ? "1px solid #fee2e2"
                       : msg.sender === "system"
-                        ? "1px dashed #cbd5e1"
+                        ? "1px solid #0f172a"
                         : "none",
                     whiteSpace: "pre-wrap",
+                    fontFamily:
+                      msg.sender === "system"
+                        ? '"Fira Code", monospace'
+                        : "inherit",
                   }}
                 >
                   {msg.content}
@@ -512,7 +564,7 @@ export default function NexusDashboard() {
               >
                 <Spin size="small" />{" "}
                 <Text type="secondary" style={{ fontSize: "12px" }}>
-                  Thinking...
+                  Processing...
                 </Text>
               </div>
             )}
@@ -539,19 +591,33 @@ export default function NexusDashboard() {
               onPressEnter={handleSendMessage}
               disabled={isStreaming || !isServerConnected}
               suffix={
-                <Button
-                  type="primary"
-                  shape="circle"
-                  icon={<MdSend size={14} />}
-                  onClick={handleSendMessage}
-                  loading={isStreaming}
-                  disabled={!isServerConnected}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                />
+                isStreaming ? (
+                  <Button
+                    type="primary"
+                    danger
+                    shape="circle"
+                    icon={<MdDelete size={14} />}
+                    onClick={handleStopGeneration}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  />
+                ) : (
+                  <Button
+                    type="primary"
+                    shape="circle"
+                    icon={<MdSend size={14} />}
+                    onClick={handleSendMessage}
+                    disabled={!isServerConnected}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  />
+                )
               }
               style={{
                 borderRadius: "12px",
@@ -670,10 +736,11 @@ export default function NexusDashboard() {
                       }}
                     >
                       <Timeline
-                        items={traceLogs.map((log) => ({
+                        items={traceLogs.map((log, i) => ({
                           color: log.color,
                           children: (
                             <span
+                              key={i}
                               style={{ color: "#475569", fontSize: "12px" }}
                             >
                               <b>[{log.node}]</b> {log.step}
@@ -797,7 +864,6 @@ export default function NexusDashboard() {
                     Commands and files that are automatically approved during
                     execution.
                   </Text>
-
                   <Title level={5} style={{ marginTop: 16 }}>
                     Commands
                   </Title>
@@ -808,7 +874,6 @@ export default function NexusDashboard() {
                     pagination={false}
                     rowKey="target"
                   />
-
                   <Title level={5} style={{ marginTop: 16 }}>
                     Files
                   </Title>
@@ -819,7 +884,6 @@ export default function NexusDashboard() {
                     pagination={false}
                     rowKey="target"
                   />
-
                   <Title level={5} style={{ marginTop: 16 }}>
                     MCP Tools
                   </Title>

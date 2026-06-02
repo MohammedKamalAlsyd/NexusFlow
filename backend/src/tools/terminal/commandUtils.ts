@@ -1,7 +1,7 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { spawn } from "node:child_process";
-import { askForPermission } from "@/safety/interactivity.js";
+import { askForPermission, approvalEmitter } from "@/safety/interactivity.js";
 import { configManager } from "@/config/index.js";
 
 /**
@@ -53,6 +53,9 @@ const runInteractiveCommand = (cmd: string): Promise<{ stdout: string; stderr: s
 
 export const executeCommandTool = tool(
     async ({ command }) => {
+        // Real-time telemetry log
+        approvalEmitter.emit("system_log", `🖥️ [TERMINAL]: Evaluating shell execution command: "${command}"`);
+
         const config = configManager.config;
 
         // Extract the actual command, ignoring directory changes
@@ -78,6 +81,9 @@ export const executeCommandTool = tool(
             `Agent wants to execute command:\n> ${actualCommand}`
         );
         if (!approved) return "Operation cancelled by user.";
+
+        // Real-time telemetry log
+        approvalEmitter.emit("system_log", `🖥️ [TERMINAL]: Running shell command: "${actualCommand}"...`);
 
         try {
             const { stdout, stderr, code } = await runInteractiveCommand(command);

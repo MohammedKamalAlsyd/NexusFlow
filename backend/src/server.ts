@@ -16,6 +16,7 @@ dotenv.config({ path: path.join(process.cwd(), '.env') });
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+const activeStreams = new Map<string, AbortController>();
 
 // Middleware
 app.use(cors({ origin: "http://localhost:5173" })); // Assuming Vite default port
@@ -66,7 +67,7 @@ app.post("/api/config", async (req, res) => {
 app.post("/api/approve", (req, res) => {
     const { id, decision } = req.body;
     if (!id || !decision) return res.status(400).json({ error: "Missing id or decision" });
-    
+
     // Resolves the paused Promise in interactivity.ts
     resolvePermission(id, decision);
     res.json({ success: true });
@@ -98,8 +99,18 @@ app.post("/api/chat", async (req, res) => {
 
         // 2. Run the LangGraph Stream
         const sessionId = `chat-session-${Date.now()}`;
-        const stream = await appGraph.stream(initialState, { 
-            streamMode: "updates", 
+        const controller = new AbortController();
+        activeStreams.set(sessionId, controller);
+
+        // If client closes browser tab/disconnects, signal cancellation
+        req.on('close', () => {
+            controller.abort();
+            activeStreams.delete(sessionId);
+        });
+
+
+        const stream = await appGraph.stream(initialState, {
+            streamMode: "updates",
             recursionLimit: 50,
             callbacks: [langfuseHandler],
             metadata: {
@@ -109,6 +120,11 @@ app.post("/api/chat", async (req, res) => {
 
         // 3. Iterate through node executions
         for await (const chunk of stream) {
+            if (controller.signal.aborted) {
+                console.log("🛑 Stream aborted by user");
+                return;
+            }
+
             const nodeNames = Object.keys(chunk);
             if (nodeNames.length === 0) continue;
 
@@ -163,6 +179,19 @@ app.post("/api/chat", async (req, res) => {
         console.error("Pipeline Stream Error:", error);
         sendEvent("error", { message: error.message });
         res.end();
+    }
+});
+
+
+// New Endpoint to manually stop
+app.post("/api/stop", (req, res) => {
+    const { sessionId } = req.body;
+    if (activeStreams.has(sessionId)) {
+        activeStreams.get(sessionId)?.abort();
+        activeStreams.delete(sessionId);
+        res.json({ status: "stopped" });
+    } else {
+        res.status(404).json({ error: "No active stream found" });
     }
 });
 

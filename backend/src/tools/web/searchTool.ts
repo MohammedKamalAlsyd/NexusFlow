@@ -1,15 +1,22 @@
-// src/tools/web/searchTool.ts
+// backend/src/tools/web/searchTool.ts
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { tavily } from "@tavily/core";
-
-// Initialize Tavily via the official SDK
-const tvly = tavily({ apiKey: process.env.TAVILY_API_KEY as string });
+import { approvalEmitter } from "@/safety/interactivity.js";
 
 export const webSearchTool = tool(
     async ({ query }) => {
+        const apiKey = process.env.TAVILY_API_KEY;
+
+        if (!apiKey) {
+            return `System Error: Web search is currently disabled because TAVILY_API_KEY is not set in the backend environment.`;
+        }
+
+        // Real-time telemetry log
+        approvalEmitter.emit("system_log", `🌐 [WEB]: Fetching internet search results for query: "${query}"...`);
+
         try {
-            // Execute search using the official modern core package
+            const tvly = tavily({ apiKey });
             const response = await tvly.search(query, {
                 searchDepth: "basic", // or "advanced" for deeper research
                 maxResults: 3
@@ -20,7 +27,7 @@ export const webSearchTool = tool(
                 const formattedResults = response.results
                     .map((res: any, index: number) => `[${index + 1}] ${res.title}\nURL: ${res.url}\nSnippet: ${res.content}\n`)
                     .join("\n");
-                
+
                 return `Search Results for "${query}":\n\n${formattedResults}`;
             }
 

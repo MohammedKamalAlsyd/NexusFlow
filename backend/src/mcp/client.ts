@@ -3,7 +3,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio";
 import { DynamicStructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
 import { toolManager } from "@/tools/toolRegistry.js";
-import { askForPermission } from "@/safety/interactivity.js";
+import { approvalEmitter, askForPermission } from "@/safety/interactivity.js";
 
 export interface McpServerConfig {
     name: string;
@@ -111,6 +111,8 @@ export class McpClientManager {
                     return "Operation cancelled by user.";
                 }
 
+                approvalEmitter.emit("system_log", `🛠️ Agent executing tool: ${namespacedToolName}...`);
+
                 // 2. Call the external MCP tool
                 try {
                     const result = await client.callTool({
@@ -129,8 +131,8 @@ export class McpClientManager {
                             typeof c === 'object' && c !== null && 'type' in c && c.type === 'text'
                         );
                         const combinedText = textBlocks.map(b => b.text).join('\n');
-                        
-                        return combinedText; 
+
+                        return combinedText;
                     }
 
                     // Fallback for non-array content structures

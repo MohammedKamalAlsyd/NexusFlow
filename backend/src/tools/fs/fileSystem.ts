@@ -1,14 +1,16 @@
-// backend/src/tools/fs/fileSystem.ts
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { validateFileOperation } from "@/safety/pathValidator.js";
-import { askForPermission } from "@/safety/interactivity.js";
+import { askForPermission, approvalEmitter } from "@/safety/interactivity.js";
 
 // --- READ MULTIPLE FILES ---
 export const readFileTool = tool(
     async ({ filePaths }) => {
+        // Real-time telemetry log
+        approvalEmitter.emit("system_log", `📂 [FS]: Reading files: ${filePaths.map(p => path.basename(p)).join(", ")}`);
+
         const results: string[] = [];
 
         for (const filePath of filePaths) {
@@ -45,6 +47,9 @@ export const writeFileTool = tool(
             return "No files provided to write.";
         }
 
+        // Real-time telemetry log
+        approvalEmitter.emit("system_log", `📂 [FS]: Evaluating write batch for ${files.length} files...`);
+
         // 1. Validate paths for all files before making any changes
         for (const file of files) {
             const safety = await validateFileOperation("write", file.filePath);
@@ -63,6 +68,9 @@ export const writeFileTool = tool(
             `Agent wants to batch write ${files.length} files to [${targetDir}]: \nFiles: ${fileNames}`
         );
         if (!approved) return "Operation cancelled by user.";
+
+        // Real-time telemetry log
+        approvalEmitter.emit("system_log", `📂 [FS]: Writing files: ${fileNames}...`);
 
         // 3. Write all files
         const results: string[] = [];
@@ -98,6 +106,9 @@ export const deleteFileTool = tool(
     async ({ filePaths }) => {
         if (filePaths.length === 0) return "No files specified for deletion.";
 
+        // Real-time telemetry log
+        approvalEmitter.emit("system_log", `📂 [FS]: Evaluating deletion request for: ${filePaths.map(p => path.basename(p)).join(", ")}`);
+
         // 1. Safety check paths for all files
         for (const filePath of filePaths) {
             const safety = await validateFileOperation("delete", filePath);
@@ -115,6 +126,9 @@ export const deleteFileTool = tool(
             `Agent wants to batch delete files inside [${targetDir}]:\nFiles: ${fileNames}`
         );
         if (!approved) return "Operation cancelled by user.";
+
+        // Real-time telemetry log
+        approvalEmitter.emit("system_log", `📂 [FS]: Deleting files: ${fileNames}...`);
 
         // 3. Execute deletions
         const results: string[] = [];
@@ -141,6 +155,9 @@ export const deleteFileTool = tool(
 // --- List Files in Directory ---
 export const listFilesTool = tool(
     async ({ dirPath }) => {
+        // Real-time telemetry log
+        approvalEmitter.emit("system_log", `📂 [FS]: Listing files in directory: ${path.basename(path.resolve(dirPath)) || dirPath}`);
+
         const safety = await validateFileOperation("read", dirPath);
         if (!safety.safe) return `Access Denied: ${safety.reason}`;
 
