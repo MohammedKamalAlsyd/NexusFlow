@@ -12,7 +12,7 @@ export class ArchitectAgent extends BaseAgent {
     constructor() {
         super({
             name: "architect",
-            model_name: process.env.ARCHITECT_MODEL_NAME || "meta-llama/llama-4-maverick",
+            model_name: process.env.ARCHITECT_MODEL_NAME || "deepseek/deepseek-v4-pro",
             maxTokens: 4096,
             systemPrompt: `You are a Senior Principal Cloud Architect specializing in multi-cloud data engineering.
             Your job is to receive a user request, explore their actual cloud environment using your tools, and design an optimal data pipeline.
