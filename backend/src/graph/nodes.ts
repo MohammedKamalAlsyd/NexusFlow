@@ -8,6 +8,7 @@ import { configManager } from "@/config/index.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { RunnableConfig } from "@langchain/core/runnables";
+import { AIMessage } from "@langchain/core/messages";
 import { systemLog } from "@/safety/interactivity.js";
 
 // Instantiate the core agents
@@ -23,7 +24,7 @@ const diagramGenerator = new DiagramGeneratorAgent();
  */
 export const architectNode = async (state: typeof AgentState.State, config?: RunnableConfig) => {
     console.log("🧠 [ARCHITECT]: Exploring cloud environment and planning...");
-    systemLog("🧠 [ARCHITECT]: Exploring active cloud directories and evaluating current state..."); // <-- UPDATED USAGE
+    systemLog("🧠 [ARCHITECT]: Exploring active cloud directories and evaluating current state...");
 
     // Extract the user's original request
     const userRequest = state.messages[0]?.content || state.messages[state.messages.length - 1]?.content;
@@ -66,13 +67,27 @@ export const architectNode = async (state: typeof AgentState.State, config?: Run
             // This is where "Bad control character" errors get thrown
             const result = JSON.parse(jsonMatch[0]);
 
-            // ─── IF SUCCESSFUL ───────────────────────────────────────
-            // Capture what tools were run to pass to the next agent (Coder) as context
+            // =========================================================================
+            // Clean up the JSON bloat so the UI looks pretty
+            // =========================================================================
+            // Extract any conversational text the LLM said *before* it dumped the JSON
+            let cleanConversationalText = rawOutput.replace(jsonMatch[0], "").trim();
+            if (!cleanConversationalText) {
+                cleanConversationalText = "I have successfully analyzed your request and formulated a cloud architecture plan.";
+            }
+
+            // Replace the ugly raw JSON payload with a clean Markdown summary for the UI
+            const formattedUIOutput = `${cleanConversationalText}\n\n✅ **Strategy Selected:** \`${result.strategy}\`\n⚙️ **Status:** Architecture map generated successfully. Proceeding to next phase...`;
+
+            const cleanFinalMessage = new AIMessage({
+                content: formattedUIOutput
+            });
+
             const history = response.messages || [];
             const toolMessages = history.filter((msg: any) => msg.role === "tool" || msg.name !== undefined);
             const aiContext = toolMessages.map((m: any) => `[Discovery Tool Output]: ${m.content}`).join("\n");
 
-            systemLog("✅ Cloud Discovery Complete. Generating UI Architecture Diagram..."); // <-- UPDATED
+            systemLog("✅ Cloud Discovery Complete. Generating UI Architecture Diagram...");
 
             console.log("🎨 [ARCHITECT]: Drafting UI Architecture Diagram...");
             const uiDiagram = await diagramGenerator.generateReactFlowJSON(result.plan);
@@ -83,15 +98,14 @@ export const architectNode = async (state: typeof AgentState.State, config?: Run
                 cloudPlan: result.plan,
                 environmentContext: { discovered: aiContext || "No infrastructure discovered." },
                 diagram: uiDiagram,
-                messages: [finalMessage] // Update state with the final plan
+                messages: [cleanFinalMessage]
             };
-
         } catch (error: any) {
             console.warn(`⚠️ [ARCHITECT]: JSON Parse Error on attempt ${attempt}/${maxRetries}. Error: ${error.message}`);
-            systemLog(`⚠️ [ARCHITECT]: JSON parsing error on attempt ${attempt}/${maxRetries}. Retrying self-correction...`); // <-- UPDATED
+            systemLog(`⚠️ [ARCHITECT]: JSON parsing error on attempt ${attempt}/${maxRetries}. Retrying self-correction...`);
 
             if (attempt >= maxRetries) {
-                systemLog("❌ [ARCHITECT]: Failed to generate a valid architecture format after maximum retries."); // <-- UPDATED
+                systemLog("❌ [ARCHITECT]: Failed to generate a valid architecture format after maximum retries.");
                 return {
                     currentStep: "planning-failed",
                     deploymentStatus: "FATAL_ERROR",

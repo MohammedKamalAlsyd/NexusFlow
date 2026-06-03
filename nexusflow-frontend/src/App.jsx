@@ -105,10 +105,10 @@ export default function NexusDashboard() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [config, setConfig] = useState(null);
 
-  // Auto-scroll
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isStreaming, pendingApproval]);
+  useEffect(
+    () => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }),
+    [messages, isStreaming, pendingApproval],
+  );
 
   const fetchConfig = useCallback(() => {
     fetch(`${BACKEND_URL}/api/config`)
@@ -135,7 +135,6 @@ export default function NexusDashboard() {
 
     socket.on("disconnect", () => setIsServerConnected(false));
 
-    // Listen for System Logs
     socket.on("system_log", (data) => {
       setMessages((prev) => [
         ...prev,
@@ -148,7 +147,6 @@ export default function NexusDashboard() {
       ]);
     });
 
-    // Listen for Node Updates (Diagrams, Code, Graph routing)
     socket.on("node_update", (data) => {
       const persona = PERSONAS[data.node] || PERSONAS["system"];
       let chatContent = data.message;
@@ -189,7 +187,6 @@ export default function NexusDashboard() {
       }
     });
 
-    // Handle Human-in-the-loop Requests natively
     socket.on("permission_request", (data, callback) => {
       setPendingApproval({ ...data, resolveFunction: callback });
     });
@@ -201,7 +198,8 @@ export default function NexusDashboard() {
     });
 
     return () => socket.disconnect();
-  }, [fetchConfig, messageApi, setEdges, setNodes]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleClearChat = () => {
     setMessages(DEFAULT_MESSAGES);
@@ -235,7 +233,6 @@ export default function NexusDashboard() {
     }
   };
 
-  // Remove an item from the Allowlist
   const handleRemoveAllowlistItem = async (category, target) => {
     const updatedList = { ...config.allowList };
     updatedList[category] = updatedList[category].filter(
@@ -255,7 +252,6 @@ export default function NexusDashboard() {
     }
   };
 
-  // Handle Security Modal actions (Approval / Rejection)
   const handleApprove = (decision) => {
     if (!pendingApproval) return;
     pendingApproval.resolveFunction(decision);
@@ -290,7 +286,6 @@ export default function NexusDashboard() {
     });
   };
 
-  // Allowlist table columns setup
   const allowlistColumns = (category) => [
     {
       title: "Target",
@@ -343,7 +338,7 @@ export default function NexusDashboard() {
           boxSizing: "border-box",
         }}
       >
-        {/* LEFT COLUMN: Chat Console */}
+        {/* Left Column: Chat Console */}
         <div
           style={{
             width: "40%",
@@ -590,7 +585,7 @@ export default function NexusDashboard() {
           </div>
         </div>
 
-        {/* RIGHT COLUMN: Assets & Diagram */}
+        {/* Right Column: Assets & Diagram */}
         <div
           style={{
             width: "60%",
@@ -719,7 +714,7 @@ export default function NexusDashboard() {
         </div>
       </div>
 
-      {/* SECURITY APPROVAL MODAL */}
+      {/* Security Approval Modal */}
       <Modal
         title={
           <Space>
@@ -769,7 +764,7 @@ export default function NexusDashboard() {
         </div>
       </Modal>
 
-      {/* SETTINGS MODAL */}
+      {/* Settings Modal */}
       <Modal
         title="NexusFlow Settings"
         open={isSettingsOpen}
@@ -826,6 +821,7 @@ export default function NexusDashboard() {
                     Commands and files that are automatically approved during
                     execution.
                   </Text>
+
                   <Title level={5} style={{ marginTop: 16 }}>
                     Commands
                   </Title>
@@ -836,6 +832,7 @@ export default function NexusDashboard() {
                     pagination={false}
                     rowKey="target"
                   />
+
                   <Title level={5} style={{ marginTop: 16 }}>
                     Files
                   </Title>
@@ -846,6 +843,7 @@ export default function NexusDashboard() {
                     pagination={false}
                     rowKey="target"
                   />
+
                   <Title level={5} style={{ marginTop: 16 }}>
                     MCP Tools
                   </Title>
