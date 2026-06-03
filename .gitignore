@@ -145,3 +145,4 @@ vite.config.ts.timestamp-*
 **/.nexusflow-settings.json
 */CodeSandBox
 */.backups
+/.vscode

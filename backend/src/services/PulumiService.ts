@@ -40,7 +40,7 @@ export class PulumiService {
             // Authenticate with Pulumi Cloud using the access token from environment
             console.log("🔐 Authenticating with Pulumi Cloud...");
             // Dynamic fallback: Uses URL from config, or falls back to your Acme Corp backend URL
-            const backendUrl = process.env.PULUMI_BACKEND_URL || "https://api.pulumi.acmecorp.com";
+            const backendUrl = process.env.PULUMI_BACKEND_URL || "https://api.pulumi.com";
             const loginOutput = this.runCommandSync(`pulumi login ${backendUrl}`);
 
             if (loginOutput.startsWith("Command failed:")) {
