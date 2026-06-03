@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { io } from "socket.io-client";
 import {
   ConfigProvider,
   Typography,
@@ -33,7 +34,6 @@ import {
   MdDelete,
 } from "react-icons/md";
 import { DeleteOutlined } from "@ant-design/icons";
-
 import ReactFlow, {
   Background,
   Controls,
@@ -78,6 +78,7 @@ const DEFAULT_MESSAGES = [
 
 export default function NexusDashboard() {
   const chatEndRef = useRef(null);
+  const socketRef = useRef(null);
   const [form] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
 
@@ -85,9 +86,9 @@ export default function NexusDashboard() {
   const [messages, setMessages] = useState(DEFAULT_MESSAGES);
   const [inputValue, setInputValue] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
-  const [isServerConnected, setIsServerConnected] = useState(true);
-  const [currentSessionId, setCurrentSessionId] = useState(
-    () => Date.now().toString(),
+  const [isServerConnected, setIsServerConnected] = useState(false);
+  const [currentSessionId, setCurrentSessionId] = useState(() =>
+    Date.now().toString(),
   );
 
   // Security Modal State
@@ -101,11 +102,10 @@ export default function NexusDashboard() {
   });
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-
-  // Config States
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [config, setConfig] = useState(null);
 
+  // Auto-scroll
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isStreaming, pendingApproval]);
@@ -115,20 +115,94 @@ export default function NexusDashboard() {
       .then((res) => res.json())
       .then((data) => {
         setConfig(data);
-        setIsServerConnected(true);
         form.setFieldsValue({
           confirmationMode: data.preferences?.confirmationMode || "manual",
           pulumiBackend: data.pulumi?.backend || "local",
         });
       })
-      .catch(() => setIsServerConnected(false));
+      .catch(console.error);
   }, [form]);
 
+  // Establish WebSocket Connection
   useEffect(() => {
-    fetchConfig();
-  }, [fetchConfig]);
+    const socket = io(BACKEND_URL, { transports: ["websocket"] });
+    socketRef.current = socket;
 
-  // Clear Chat, Canvas, and reset Backend Session
+    socket.on("connect", () => {
+      setIsServerConnected(true);
+      fetchConfig();
+    });
+
+    socket.on("disconnect", () => setIsServerConnected(false));
+
+    // Listen for System Logs
+    socket.on("system_log", (data) => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now() + Math.random(),
+          sender: "system",
+          persona: PERSONAS["system"],
+          content: data.message,
+        },
+      ]);
+    });
+
+    // Listen for Node Updates (Diagrams, Code, Graph routing)
+    socket.on("node_update", (data) => {
+      const persona = PERSONAS[data.node] || PERSONAS["system"];
+      let chatContent = data.message;
+      if (data.errors)
+        chatContent += `\n\n⚠️ DIAGNOSTIC ERRORS:\n${data.errors}`;
+
+      if (chatContent) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now() + Math.random(),
+            sender: "bot",
+            persona,
+            content: chatContent,
+          },
+        ]);
+      }
+
+      setTraceLogs((prev) => [
+        ...prev,
+        {
+          color: data.errors ? "red" : "blue",
+          node: data.node,
+          step: data.step || "Processing",
+        },
+      ]);
+
+      if (data.diagram?.nodes?.length > 0) {
+        setNodes(data.diagram.nodes);
+        setEdges(data.diagram.edges || []);
+      }
+
+      if (data.code?.pulumi || data.code?.pyspark) {
+        setCode((prev) => ({
+          pulumi: data.code.pulumi || prev.pulumi,
+          pyspark: data.code.pyspark || prev.pyspark,
+        }));
+      }
+    });
+
+    // Handle Human-in-the-loop Requests natively
+    socket.on("permission_request", (data, callback) => {
+      setPendingApproval({ ...data, resolveFunction: callback });
+    });
+
+    socket.on("workflow_complete", () => setIsStreaming(false));
+    socket.on("error", (data) => {
+      messageApi.error(data.message);
+      setIsStreaming(false);
+    });
+
+    return () => socket.disconnect();
+  }, [fetchConfig, messageApi, setEdges, setNodes]);
+
   const handleClearChat = () => {
     setMessages(DEFAULT_MESSAGES);
     setTraceLogs([]);
@@ -138,21 +212,19 @@ export default function NexusDashboard() {
       pulumi: "# Waiting for generation...",
       pyspark: "# Waiting for generation...",
     });
-    setCurrentSessionId(Date.now().toString()); // Start a fresh tracking ID
+    setCurrentSessionId(Date.now().toString());
     messageApi.success("Workspace cleared.");
   };
 
-  // Save Settings Config
   const handleSaveConfig = async (values) => {
     try {
-      const payload = {
-        preferences: { confirmationMode: values.confirmationMode },
-        pulumi: { backend: values.pulumiBackend },
-      };
       const res = await fetch(`${BACKEND_URL}/api/config`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          preferences: { confirmationMode: values.confirmationMode },
+          pulumi: { backend: values.pulumiBackend },
+        }),
       });
       const data = await res.json();
       setConfig(data.config);
@@ -184,37 +256,24 @@ export default function NexusDashboard() {
   };
 
   // Handle Security Modal actions (Approval / Rejection)
-  const handleApprove = async (decision) => {
+  const handleApprove = (decision) => {
     if (!pendingApproval) return;
-    try {
-      await fetch(`${BACKEND_URL}/api/approve`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: pendingApproval.id, decision }),
-      });
-      setPendingApproval(null);
-      if (decision === "allow_always") fetchConfig();
-    } catch {
-      messageApi.error("Failed to send approval to backend.");
-    }
+    pendingApproval.resolveFunction(decision);
+    setPendingApproval(null);
+    if (decision === "allow_always") fetchConfig();
   };
 
-  // Halt Active Stream Generation via AbortController Map
-  const handleStopGeneration = async () => {
-    setIsStreaming(false);
-    try {
-      await fetch(`${BACKEND_URL}/api/stop`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: currentSessionId }),
+  const handleStopGeneration = () => {
+    if (socketRef.current) {
+      socketRef.current.emit("stop_generation", {
+        sessionId: currentSessionId,
       });
+      setIsStreaming(false);
       messageApi.info("Workflow execution halted.");
-    } catch {
-      messageApi.error("Failed to stop generation stream.");
     }
   };
 
-  const handleSendMessage = async () => {
+  const handleSendMessage = () => {
     if (!inputValue.trim() || isStreaming || !isServerConnected) return;
 
     const userPrompt = inputValue;
@@ -225,105 +284,13 @@ export default function NexusDashboard() {
     setInputValue("");
     setIsStreaming(true);
 
-    try {
-      const response = await fetch(`${BACKEND_URL}/api/chat`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Session-ID": currentSessionId,
-        },
-        body: JSON.stringify({ prompt: userPrompt }),
-      });
-
-      if (!response.body) throw new Error("Stream not supported.");
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const parts = buffer.split("\n\n");
-        buffer = parts.pop() || "";
-
-        for (const part of parts) {
-          const eventMatch = part.match(/event: (.*)\n/);
-          const dataMatch = part.match(/data: (.*)/);
-
-          if (eventMatch && dataMatch) {
-            const eventType = eventMatch[1].trim();
-            const data = JSON.parse(dataMatch[1].trim());
-
-            if (eventType === "permission_request") {
-              setPendingApproval(data);
-            } else if (eventType === "system_log") {
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: Date.now() + Math.random(),
-                  sender: "system",
-                  persona: PERSONAS["system"],
-                  content: data.message,
-                },
-              ]);
-            } else if (eventType === "node_update") {
-              const persona = PERSONAS[data.node] || PERSONAS["system"];
-
-              let chatContent = data.message;
-              if (data.errors)
-                chatContent += `\n\n⚠️ DIAGNOSTIC ERRORS:\n${data.errors}`;
-
-              if (chatContent) {
-                setMessages((prev) => [
-                  ...prev,
-                  {
-                    id: Date.now() + Math.random(),
-                    sender: "bot",
-                    persona,
-                    content: chatContent,
-                  },
-                ]);
-              }
-
-              setTraceLogs((prev) => [
-                ...prev,
-                {
-                  color: data.errors ? "red" : "blue",
-                  node: data.node,
-                  step: data.step || "Processing",
-                },
-              ]);
-
-              if (data.diagram?.nodes?.length > 0) {
-                setNodes(data.diagram.nodes);
-                setEdges(data.diagram.edges || []);
-              }
-
-              if (data.code?.pulumi || data.code?.pyspark) {
-                setCode({
-                  pulumi: data.code.pulumi || code.pulumi,
-                  pyspark: data.code.pyspark || code.pyspark,
-                });
-              }
-            } else if (
-              eventType === "workflow_complete" ||
-              eventType === "error"
-            ) {
-              if (eventType === "error") messageApi.error(data.message);
-              setIsStreaming(false);
-            }
-          }
-        }
-      }
-    } catch {
-      messageApi.error("Connection stream failed.");
-      setIsStreaming(false);
-    }
+    socketRef.current.emit("start_chat", {
+      prompt: userPrompt,
+      sessionId: currentSessionId,
+    });
   };
 
+  // Allowlist table columns setup
   const allowlistColumns = (category) => [
     {
       title: "Target",
@@ -420,36 +387,31 @@ export default function NexusDashboard() {
                 >
                   NexusFlow Swarm
                 </Title>
-                {!isServerConnected ? (
-                  <Badge
-                    status="error"
-                    text={
-                      <span
-                        style={{
-                          color: "#dc2626",
-                          fontSize: "12px",
-                          cursor: "pointer",
-                        }}
-                        onClick={fetchConfig}
-                      >
-                        Server Offline - Retry
-                      </span>
-                    }
-                  />
-                ) : (
-                  <Badge
-                    status={isStreaming ? "processing" : "success"}
-                    text={
-                      <span style={{ color: "#475569", fontSize: "12px" }}>
-                        {isStreaming
+                <Badge
+                  status={
+                    !isServerConnected
+                      ? "error"
+                      : isStreaming
+                        ? "processing"
+                        : "success"
+                  }
+                  text={
+                    <span
+                      style={{
+                        color: !isServerConnected ? "#dc2626" : "#475569",
+                        fontSize: "12px",
+                      }}
+                    >
+                      {!isServerConnected
+                        ? "Server Offline"
+                        : isStreaming
                           ? pendingApproval
                             ? "Waiting for Human..."
                             : "Swarm Executing..."
                           : "Swarm Ready"}
-                      </span>
-                    }
-                  />
-                )}
+                    </span>
+                  }
+                />
               </div>
             </Flex>
             <Space>

@@ -3,13 +3,12 @@ import { z } from "zod";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { validateFileOperation } from "@/safety/pathValidator.js";
-import { askForPermission, approvalEmitter } from "@/safety/interactivity.js";
+import { askForPermission, systemLog } from "@/safety/interactivity.js";
 
 // --- READ MULTIPLE FILES ---
 export const readFileTool = tool(
     async ({ filePaths }) => {
-        // Real-time telemetry log
-        approvalEmitter.emit("system_log", `📂 [FS]: Reading files: ${filePaths.map(p => path.basename(p)).join(", ")}`);
+        systemLog(`📂 [FS]: Reading files: ${filePaths.map(p => path.basename(p)).join(", ")}`);
 
         const results: string[] = [];
 
@@ -47,8 +46,7 @@ export const writeFileTool = tool(
             return "No files provided to write.";
         }
 
-        // Real-time telemetry log
-        approvalEmitter.emit("system_log", `📂 [FS]: Evaluating write batch for ${files.length} files...`);
+        systemLog(`📂 [FS]: Evaluating write batch for ${files.length} files...`);
 
         // 1. Validate paths for all files before making any changes
         for (const file of files) {
@@ -59,18 +57,17 @@ export const writeFileTool = tool(
         }
 
         // 2. Ask user for permission ONCE for the entire batch
-        const targetDir = path.dirname(path.resolve(files[0]!.filePath)); 
+        const targetDir = path.dirname(path.resolve(files[0]!.filePath));
         const fileNames = files.map(f => path.basename(f.filePath)).join(", ");
         const approved = await askForPermission(
-            "files", 
-            "write", 
-            targetDir, 
+            "files",
+            "write",
+            targetDir,
             `Agent wants to batch write ${files.length} files to [${targetDir}]: \nFiles: ${fileNames}`
         );
         if (!approved) return "Operation cancelled by user.";
 
-        // Real-time telemetry log
-        approvalEmitter.emit("system_log", `📂 [FS]: Writing files: ${fileNames}...`);
+        systemLog(`📂 [FS]: Writing files: ${fileNames}...`);
 
         // 3. Write all files
         const results: string[] = [];
@@ -106,8 +103,7 @@ export const deleteFileTool = tool(
     async ({ filePaths }) => {
         if (filePaths.length === 0) return "No files specified for deletion.";
 
-        // Real-time telemetry log
-        approvalEmitter.emit("system_log", `📂 [FS]: Evaluating deletion request for: ${filePaths.map(p => path.basename(p)).join(", ")}`);
+        systemLog(`📂 [FS]: Evaluating deletion request for: ${filePaths.map(p => path.basename(p)).join(", ")}`);
 
         // 1. Safety check paths for all files
         for (const filePath of filePaths) {
@@ -118,7 +114,7 @@ export const deleteFileTool = tool(
         // 2. Ask for permission targeting the workspace directory containing the files
         const targetDir = path.dirname(path.resolve(filePaths[0]!));
         const fileNames = filePaths.map(f => path.basename(f)).join(", ");
-        
+
         const approved = await askForPermission(
             "files",
             "delete",
@@ -127,8 +123,7 @@ export const deleteFileTool = tool(
         );
         if (!approved) return "Operation cancelled by user.";
 
-        // Real-time telemetry log
-        approvalEmitter.emit("system_log", `📂 [FS]: Deleting files: ${fileNames}...`);
+        systemLog(`📂 [FS]: Deleting files: ${fileNames}...`);
 
         // 3. Execute deletions
         const results: string[] = [];
@@ -155,8 +150,7 @@ export const deleteFileTool = tool(
 // --- List Files in Directory ---
 export const listFilesTool = tool(
     async ({ dirPath }) => {
-        // Real-time telemetry log
-        approvalEmitter.emit("system_log", `📂 [FS]: Listing files in directory: ${path.basename(path.resolve(dirPath)) || dirPath}`);
+        systemLog(`📂 [FS]: Listing files in directory: ${path.basename(path.resolve(dirPath)) || dirPath}`);
 
         const safety = await validateFileOperation("read", dirPath);
         if (!safety.safe) return `Access Denied: ${safety.reason}`;
@@ -175,10 +169,10 @@ export const listFilesTool = tool(
                 return !name.startsWith(".") && !IGNORED_NAMES.has(name);
             });
 
-            const fileList = filteredEntries.map(entry => 
+            const fileList = filteredEntries.map(entry =>
                 entry.isDirectory() ? `[DIR]  ${entry.name}` : `[FILE] ${entry.name}`
             );
-            
+
             if (fileList.length === 0) return "Directory is empty (or all contents are hidden/ignored).";
 
             return `Listing contents of ${dirPath}:\n${fileList.join("\n")}`;

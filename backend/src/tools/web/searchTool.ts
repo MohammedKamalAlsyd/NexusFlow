@@ -1,8 +1,7 @@
-// backend/src/tools/web/searchTool.ts
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { tavily } from "@tavily/core";
-import { approvalEmitter } from "@/safety/interactivity.js";
+import { systemLog } from "@/safety/interactivity.js";
 
 export const webSearchTool = tool(
     async ({ query }) => {
@@ -12,8 +11,7 @@ export const webSearchTool = tool(
             return `System Error: Web search is currently disabled because TAVILY_API_KEY is not set in the backend environment.`;
         }
 
-        // Real-time telemetry log
-        approvalEmitter.emit("system_log", `🌐 [WEB]: Fetching internet search results for query: "${query}"...`);
+        systemLog(`🌐 [WEB]: Fetching internet search results for query: "${query}"...`);
 
         try {
             const tvly = tavily({ apiKey });

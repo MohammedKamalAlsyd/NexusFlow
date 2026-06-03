@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { isPathAllowed, isPathBlocked } from "@/safety/pathValidator.js";
 import { configManager } from "@/config/index.js";
-import { approvalEmitter } from "@/safety/interactivity.js";
+import { systemLog } from "@/safety/interactivity.js";
 
 async function isBinary(filePath: string): Promise<boolean> {
     try {
@@ -21,8 +21,7 @@ async function isBinary(filePath: string): Promise<boolean> {
 
 export const searchContentTool = tool(
     async ({ pattern, dirPath }) => {
-        // Real-time telemetry log
-        approvalEmitter.emit("system_log", `🔍 [FS]: Scanning file contents for pattern: "${pattern}" inside directory: ${dirPath}`);
+        systemLog(`🔍 [FS]: Scanning file contents for pattern: "${pattern}" inside directory: ${dirPath}`);
 
         const safetyConfig = configManager.config.safety;
 

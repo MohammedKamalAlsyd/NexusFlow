@@ -1,12 +1,5 @@
-// backend/src/safety/interactivity.ts
-import { EventEmitter } from "node:events";
 import { configManager } from "../config/index.js";
-
-// Global emitter to bridge deep tool execution with the Express HTTP stream
-export const approvalEmitter = new EventEmitter();
-
-// Store pending promises that are pausing the LangGraph execution
-const pendingRequests = new Map<string, (decision: "allow_always" | "allow_once" | "deny") => void>();
+import { executionContext } from "./executionContext.js";
 
 export async function askForPermission(
     category: "files" | "commands" | "mcp",
@@ -14,7 +7,7 @@ export async function askForPermission(
     target: string,
     displayMessage: string
 ): Promise<boolean> {
-    
+
     // 1. Fully Autonomous bypass
     if (configManager.config.preferences.confirmationMode === "auto") return true;
     if (operation === "read") return true;
@@ -30,49 +23,57 @@ export async function askForPermission(
     });
 
     if (isAllowed) {
-        // Notify the frontend that an action was auto-approved
-        approvalEmitter.emit("system_log", `✅ Auto-approved [${category}]: ${target} (Found in Allowlist)`);
+        systemLog(`✅ Auto-approved [${category}]: ${target} (Found in Allowlist)`);
         return true;
     }
 
-    // 3. Pause execution and ask the Frontend UI
-    const reqId = Date.now().toString() + Math.random().toString(36).substring(7);
-    
-    // Create a promise that pauses this tool's execution until resolve is called
-    const decision = await new Promise<"allow_always" | "allow_once" | "deny">((resolve) => {
-        pendingRequests.set(reqId, resolve);
-        
-        // Push the request to the frontend via SSE
-        approvalEmitter.emit("permission_request", {
-            id: reqId,
+    // 3. Request Permission via Active WebSocket
+    const store = executionContext.getStore();
+
+    if (!store?.socket) {
+        console.warn("⚠️ No active socket found for this execution. Denying permission for safety.");
+        return false;
+    }
+
+    try {
+        // Socket.io .timeout() wrapper alters the return type to an Array. 
+        const rawResponse = await store.socket.timeout(300000).emitWithAck("permission_request", {
             category,
             operation,
             target,
             displayMessage
         });
-    });
 
-    // 4. Handle the Frontend's decision
-    if (decision === "allow_always") {
-        await configManager.addRule(category, { target, operation });
-        approvalEmitter.emit("system_log", `🛡️ Added '${target}' to Allowlist.`);
-        return true;
+        // CRITICAL FIX: Extract the string if it was returned as an array
+        const decision = Array.isArray(rawResponse) ? rawResponse[0] : rawResponse;
+
+        // 4. Handle the Frontend's decision
+        if (decision === "allow_always") {
+            await configManager.addRule(category, { target, operation });
+            systemLog(`🛡️ Added '${target}' to Allowlist.`);
+            return true;
+        }
+
+        if (decision === "allow_once") {
+            systemLog(`🛡️ Allowed '${target}' for this execution only.`);
+            return true;
+        }
+
+        systemLog(`❌ Denied execution of '${target}'.`);
+        return false;
+
+    } catch (error) {
+        systemLog(`❌ Permission request timed out or failed.`);
+        return false;
     }
-
-    if (decision === "allow_once") {
-        approvalEmitter.emit("system_log", `🛡️ Allowed '${target}' for this execution only.`);
-        return true;
-    }
-
-    approvalEmitter.emit("system_log", `❌ Denied execution of '${target}'.`);
-    return false;
 }
 
-// Function called by the new Express /api/approve route
-export function resolvePermission(id: string, decision: "allow_always" | "allow_once" | "deny") {
-    const resolveFn = pendingRequests.get(id);
-    if (resolveFn) {
-        resolveFn(decision);
-        pendingRequests.delete(id); // Clean up
+// Helper to push logs directly to the user's specific frontend chat UI
+export function systemLog(message: string) {
+    const store = executionContext.getStore();
+    if (store?.socket) {
+        store.socket.emit("system_log", { message });
     }
+    // Fallback to console for backend debugging
+    console.log(message);
 }

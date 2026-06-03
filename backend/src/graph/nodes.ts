@@ -8,7 +8,7 @@ import { configManager } from "@/config/index.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { RunnableConfig } from "@langchain/core/runnables";
-import { approvalEmitter } from "@/safety/interactivity.js";
+import { systemLog } from "@/safety/interactivity.js";
 
 // Instantiate the core agents
 const architect = new ArchitectAgent();
@@ -23,7 +23,7 @@ const diagramGenerator = new DiagramGeneratorAgent();
  */
 export const architectNode = async (state: typeof AgentState.State, config?: RunnableConfig) => {
     console.log("🧠 [ARCHITECT]: Exploring cloud environment and planning...");
-    approvalEmitter.emit("system_log", "🧠 [ARCHITECT]: Exploring active cloud directories and evaluating current state...");
+    systemLog("🧠 [ARCHITECT]: Exploring active cloud directories and evaluating current state..."); // <-- UPDATED USAGE
 
     // Extract the user's original request
     const userRequest = state.messages[0]?.content || state.messages[state.messages.length - 1]?.content;
@@ -72,7 +72,7 @@ export const architectNode = async (state: typeof AgentState.State, config?: Run
             const toolMessages = history.filter((msg: any) => msg.role === "tool" || msg.name !== undefined);
             const aiContext = toolMessages.map((m: any) => `[Discovery Tool Output]: ${m.content}`).join("\n");
 
-            approvalEmitter.emit("system_log", "✅ Cloud Discovery Complete. Generating UI Architecture Diagram...");
+            systemLog("✅ Cloud Discovery Complete. Generating UI Architecture Diagram..."); // <-- UPDATED
 
             console.log("🎨 [ARCHITECT]: Drafting UI Architecture Diagram...");
             const uiDiagram = await diagramGenerator.generateReactFlowJSON(result.plan);
@@ -88,10 +88,10 @@ export const architectNode = async (state: typeof AgentState.State, config?: Run
 
         } catch (error: any) {
             console.warn(`⚠️ [ARCHITECT]: JSON Parse Error on attempt ${attempt}/${maxRetries}. Error: ${error.message}`);
-            approvalEmitter.emit("system_log", `⚠️ [ARCHITECT]: JSON parsing error on attempt ${attempt}/${maxRetries}. Retrying self-correction...`);
+            systemLog(`⚠️ [ARCHITECT]: JSON parsing error on attempt ${attempt}/${maxRetries}. Retrying self-correction...`); // <-- UPDATED
 
             if (attempt >= maxRetries) {
-                approvalEmitter.emit("system_log", "❌ [ARCHITECT]: Failed to generate a valid architecture format after maximum retries.");
+                systemLog("❌ [ARCHITECT]: Failed to generate a valid architecture format after maximum retries."); // <-- UPDATED
                 return {
                     currentStep: "planning-failed",
                     deploymentStatus: "FATAL_ERROR",
@@ -104,9 +104,7 @@ export const architectNode = async (state: typeof AgentState.State, config?: Run
             // By passing the history, the agent skips running the tools again and immediately fixes its JSON string.
             currentMessages.push({
                 role: "user",
-                content: `Your previous output caused a JSON parsing error: "${error.message}". 
-                This usually means you forgot to escape quotes or newlines (e.g., use \\n instead of actual newlines) inside your JSON string values. 
-                Please fix the formatting and output ONLY the valid JSON object.`
+                content: `Your previous output caused a JSON parsing error: "${error.message}". Please fix the formatting and output ONLY the valid JSON object.`
             });
         }
     }
@@ -121,9 +119,9 @@ export const pipelineCoderNode = async (state: typeof AgentState.State, config?:
     console.log("👨‍💻 [PIPELINE CODER]: Designing environment and writing pure Python code...");
 
     if (state.validationErrors) {
-        approvalEmitter.emit("system_log", "👨‍💻 [PIPELINE CODER]: Deployment failure detected. Running diagnosis and template patching...");
+        systemLog("👨‍💻 [PIPELINE CODER]: Deployment failure detected. Running diagnosis and template patching...");
     } else {
-        approvalEmitter.emit("system_log", `👨‍💻 [PIPELINE CODER]: Initiating code generation for execution strategy: ${state.executionStrategy}...`);
+        systemLog(`👨‍💻 [PIPELINE CODER]: Initiating code generation for execution strategy: ${state.executionStrategy}...`);
     }
 
     let currentWorkspace = state.workspacePath;
@@ -133,7 +131,7 @@ export const pipelineCoderNode = async (state: typeof AgentState.State, config?:
         await fs.mkdir(currentWorkspace, { recursive: true });
 
         console.log("📦 Auto-scaffolding minimal Python Pulumi configuration...");
-        approvalEmitter.emit("system_log", `📦 Scaffolded new deployment workspace: ${path.basename(currentWorkspace)}`);
+        systemLog(`📦 Scaffolded new deployment workspace: ${path.basename(currentWorkspace)}`);
 
         // 1. Scaffold Pulumi Python settings (NO tsconfig or package.json!)
         const pulumiYaml = `name: nexusflow-deployment\nruntime:\n  name: python\n  options:\n    virtualenv: .venv\ndescription: NexusFlow Auto-Generated IaC in Python\n`;
@@ -160,8 +158,7 @@ export const pipelineCoderNode = async (state: typeof AgentState.State, config?:
         const runner = pipelineCoder.getRunnable();
         const response = await runner.invoke({ messages: [{ role: "user", content: prompt }] }, config);
 
-        approvalEmitter.emit("system_log", "✅ [PIPELINE CODER]: Python Pulumi configurations and PySpark templates generated successfully.");
-
+        systemLog("✅ [PIPELINE CODER]: Python Pulumi configurations and PySpark templates generated successfully.");
         return {
             currentStep: "pipeline-coding",
             workspacePath: currentWorkspace,
@@ -169,7 +166,7 @@ export const pipelineCoderNode = async (state: typeof AgentState.State, config?:
             messages: response.messages
         };
     } catch (error: any) {
-        approvalEmitter.emit("system_log", `❌ [PIPELINE CODER]: Code execution logic failed: ${error.message}`);
+        systemLog(`❌ [PIPELINE CODER]: Code execution logic failed: ${error.message}`);
         return {
             currentStep: "pipeline-coding-failed",
             validationErrors: `Agent logic failed: ${error.message}`,
@@ -184,13 +181,11 @@ export const pipelineCoderNode = async (state: typeof AgentState.State, config?:
  */
 export const deployerNode = async (state: typeof AgentState.State, config?: RunnableConfig) => {
     console.log(`\n📦 [DEPLOYER]: Running Pulumi in ${state.workspacePath}...`);
-    approvalEmitter.emit("system_log", "📦 [DEPLOYER]: Running native Pulumi compilation and execution...");
-
-    const deployer = new PulumiService(state.workspacePath);
+    systemLog("📦 [DEPLOYER]: Running native Pulumi compilation and execution...");
 
     const wsPath = state.workspacePath;
     if (!wsPath || wsPath.trim() === '') {
-        approvalEmitter.emit("system_log", "❌ [DEPLOYER]: Execution aborted. Target workspace path is empty.");
+        systemLog("❌ [DEPLOYER]: Execution aborted. Target workspace path is empty.");
         return {
             currentStep: "deploying-failed",
             deploymentStatus: "FAILED",
@@ -199,22 +194,24 @@ export const deployerNode = async (state: typeof AgentState.State, config?: Runn
         };
     }
 
+    const deployer = new PulumiService(wsPath);
+
     try {
         const result = await deployer.deploy();
 
         // If Pulumi catches a syntax error, missing file, or cloud rejection:
         if (!result.success) {
             console.warn("⚠️ [DEPLOYER]: Pulumi failed! Sending compiler errors back to Coder.");
-            approvalEmitter.emit("system_log", "⚠️ [DEPLOYER]: Pulumi execution failed. Extracting stderr log stack and routing back to Coder Node...");
+            systemLog("⚠️ [DEPLOYER]: Pulumi execution failed. Extracting stderr log stack and routing back to Coder Node...");
             return {
                 currentStep: "deploying-failed",
                 deploymentStatus: "FAILED",
                 validationErrors: `Pulumi Deployment Failed. Fix these errors: \n${result.logs}`,
-                retryCount: 1 // State reducer will append +1
+                retryCount: 1
             };
         }
 
-        approvalEmitter.emit("system_log", "✅ [DEPLOYER]: Pulumi stack deployed successfully. Active resources are live.");
+        systemLog("✅ [DEPLOYER]: Pulumi stack deployed successfully. Active resources are live.");
         return {
             currentStep: "deployment-success",
             deploymentStatus: "SUCCESS",
@@ -224,7 +221,7 @@ export const deployerNode = async (state: typeof AgentState.State, config?: Runn
 
     } catch (error: any) {
         console.error("❌ [DEPLOYER]: Fatal engine execution error:", error.message);
-        approvalEmitter.emit("system_log", `❌ [DEPLOYER]: System execution exception encountered: ${error.message}`);
+        systemLog(`❌ [DEPLOYER]: System execution exception encountered: ${error.message}`);
         return {
             currentStep: "deploying-failed",
             deploymentStatus: "FAILED",
@@ -246,12 +243,12 @@ export const dataOpsNode = async (state: typeof AgentState.State, config?: Runna
     // Determine context: Are we just analyzing data, or executing a deployed pipeline?
     if (state.executionStrategy === "DATA_ANALYSIS") {
         console.log("📊 [DATA OPS]: Running analysis queries via MCP...");
-        approvalEmitter.emit("system_log", "📊 [DATA OPS]: Direct data analysis strategy selected. Invoking query engines via MCP...");
+        systemLog("📊 [DATA OPS]: Direct data analysis strategy selected. Invoking query engines via MCP...");
         currentStepName = "data-analysis-complete";
         prompt = `Execute this analysis plan: ${state.cloudPlan} against the environment: ${JSON.stringify(state.environmentContext)}`;
     } else {
         console.log("▶️ [DATA OPS]: Infrastructure deployed. Triggering and monitoring ETL Job...");
-        approvalEmitter.emit("system_log", "▶️ [DATA OPS]: Infrastructure deployed. Locating target cloud task and starting execution...");
+        systemLog("▶️ [DATA OPS]: Infrastructure deployed. Locating target cloud task and starting execution...");
         currentStepName = "job-execution-complete";
         const originalRequest = state.messages[0]?.content || "Process Data";
         prompt = `The infrastructure and ETL scripts have been successfully deployed via Pulumi.
@@ -268,15 +265,14 @@ export const dataOpsNode = async (state: typeof AgentState.State, config?: Runna
         const runner = dataOps.getRunnable();
         const response = await runner.invoke({ messages: [{ role: "user", content: prompt }] }, config);
 
-        approvalEmitter.emit("system_log", "✅ [DATA OPS]: Query executions completed. Constructing final summary and closing session...");
-
+        systemLog("✅ [DATA OPS]: Query executions completed. Constructing final summary and closing session...");
         return {
             currentStep: currentStepName,
             messages: response.messages,
             deploymentStatus: "SUCCESS" // End graph cleanly
         };
     } catch (error: any) {
-        approvalEmitter.emit("system_log", `❌ [DATA OPS]: Operational execution task failed: ${error.message}`);
+        systemLog(`❌ [DATA OPS]: Operational execution task failed: ${error.message}`);
         return {
             currentStep: "dataops-failed",
             validationErrors: `DataOps agent execution failed: ${error.message}`,

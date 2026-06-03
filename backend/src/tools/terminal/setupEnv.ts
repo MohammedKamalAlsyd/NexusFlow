@@ -1,4 +1,3 @@
-// backend/src/tools/terminal/setupEnv.ts
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { exec } from "node:child_process";
@@ -6,14 +5,13 @@ import { promisify } from "node:util";
 import path from "node:path";
 import fs from "node:fs/promises";
 import { isPathAllowed } from "@/safety/pathValidator.js";
-import { askForPermission, approvalEmitter } from "@/safety/interactivity.js";
+import { askForPermission, systemLog } from "@/safety/interactivity.js";
 
 const execAsync = promisify(exec);
 
 export const setupEnvironmentTool = tool(
     async ({ workspacePath, type, packages }) => {
-        // Real-time telemetry log
-        approvalEmitter.emit("system_log", `⚡ [ENV]: Evaluating environment setup request in path: ${path.basename(workspacePath)}`);
+        systemLog(`⚡ [ENV]: Evaluating environment setup request in path: ${path.basename(workspacePath)}`);
 
         const resolvedPath = path.resolve(workspacePath);
         const safety = isPathAllowed(resolvedPath);
@@ -32,8 +30,7 @@ export const setupEnvironmentTool = tool(
             return "Operation cancelled by user.";
         }
 
-        // Real-time telemetry log
-        approvalEmitter.emit("system_log", `⚡ [ENV]: Initializing ${type} dependencies [${packages?.join(", ") || ""}]...`);
+        systemLog(`⚡ [ENV]: Initializing ${type} dependencies [${packages?.join(", ") || ""}]...`);
 
         try {
             await fs.mkdir(resolvedPath, { recursive: true });
