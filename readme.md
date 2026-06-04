@@ -1,207 +1,207 @@
 # 🌌 NexusFlow: Agentic Cross-Cloud Data Orchestrator
 
-## Executive Summary
-NexusFlow is an intelligent, agent-driven data engineering platform designed to automate the end-to-end lifecycle of ETL pipelines across heterogeneous cloud environments (AWS, Azure, Databricks). 
-
-Unlike traditional code generators or CLI copilots, NexusFlow acts as an **Autonomous AI Data Engineer**. It utilizes a strict Directed Acyclic Graph (DAG) state machine to:
-1. **Discover** existing cloud environments (Brownfield vs. Greenfield).
-2. **Architect** optimal data pipelines.
-3. **Write** high-performance PySpark/JSON ETL scripts and Pulumi Infrastructure-as-Code (IaC).
-4. **Self-Correct** by catching parser errors or cloud deployment failures, looping back to rewrite code autonomously.
+NexusFlow is an intelligent, agent-driven data engineering platform designed to automate the end-to-end lifecycle of ETL pipelines across heterogeneous cloud environments (AWS, Azure, and Databricks).
 
 ---
 
-## 🧠 System Architecture: "The Brain and The Muscle"
+### **🛠️ Tech Stack & Programming Languages**
 
-NexusFlow separates orchestration logic from execution tools:
-*   **The Brain (LangGraph):** A deterministic state machine that routes prompts and context between specialized AI Agents.
-*   **The Eyes (Cloud SDKs):** Read-only tools (AWS Boto3, Azure ARM) used to scan existing cloud infrastructure.
-*   **The Muscle (Pulumi & Terminal):** Safely executes shell commands, provisions cloud resources, and manages state.
-*   **The Nervous System (Langfuse):** Complete OpenTelemetry observability, tracing every LLM thought, token cost, and tool call.
+#### **Languages & Runtimes**
+![NodeJS](https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
+![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?style=for-the-badge&logo=javascript&logoColor=black)
+![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![SQL](https://img.shields.io/badge/SQL-CC2927?style=for-the-badge&logo=microsoftsqlserver&logoColor=white)
 
-### Agentic Workflow (The State Machine)
-The core orchestration is defined in `workflow.ts`. Below is the logical flow. Future LLMs should reference this Mermaid diagram to understand the routing logic:
+#### **Cloud & Infrastructure**
+![AWS](https://img.shields.io/badge/AWS-232F3E?style=for-the-badge&logo=amazonwebservices&logoColor=white)
+![Azure](https://img.shields.io/badge/Azure-0089D6?style=for-the-badge&logo=microsoftazure&logoColor=white)
+![Pulumi](https://img.shields.io/badge/Pulumi-8A3391?style=for-the-badge&logo=pulumi&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+
+#### **Orchestration, Frameworks & Libraries**
+![Socket.io](https://img.shields.io/badge/Socket.io-010101?style=for-the-badge&logo=socketdotio&logoColor=white)
+![Apache Spark](https://img.shields.io/badge/Apache%20Spark-E25A1C?style=for-the-badge&logo=apachespark&logoColor=white)
+![React](https://img.shields.io/badge/React-61DAFB?style=for-the-badge&logo=react&logoColor=black)
+![Ant Design](https://img.shields.io/badge/Ant%20Design-0170FE?style=for-the-badge&logo=antdesign&logoColor=white)
+
+---
+
+## 📺 Demonstration Video
+*A walk-through showing real-time execution, human-in-the-loop approvals, and pipeline deployments is available below:*
+
+[![Demonstration Video](https://img.shields.io/badge/Video-Demonstration-red?style=for-the-badge&logo=youtube&logoColor=white)](#) *(Replace this text with your direct video URL or embedding when ready)*
+
+---
+
+## 💡 The Engineering Challenge: Why NexusFlow?
+
+Building, deploying, and maintaining cloud data pipelines at scale presents several systemic challenges that manual engineering struggles to solve:
+
+*   **Manual Transformations are Highly Error-Prone:** Writing ETL code (such as PySpark or SQL) alongside Infrastructure-as-Code (IaC) requires perfect synchronization. A single typo in an S3 bucket URI, a mismatched schema definition, or an improperly configured IAM trust policy will cause the entire pipeline to fail during execution. 
+*   **Limitations of Native Cloud Tooling:** Native orchestration services (like AWS CloudFormation or Azure Resource Manager) are rigid and verbose. They do not easily allow for **dynamic environment discovery**—meaning they cannot scan your active cloud first to see if a resource already exists before trying to create it. This leads to deployment collisions, state drift, and orphaned resources.
+*   **The Multi-Cloud Paradigm Barrier:** Orchestrating data across different clouds (e.g., migrating clickstream data from Azure Blobs to AWS S3) requires engineers to switch between completely different authentication models, CLI tools, and API paradigms. No native single-cloud tool spans this gap cleanly.
+*   **High Debugging Latency:** When a traditional deployment fails, tracing the root cause is highly fragmented. Engineers must manually correlate logs across AWS CloudWatch, Glue Console errors, IAM policy simulators, and local terminal output. 
+
+### How NexusFlow Bridges the Gap
+*   **Dynamic Discovery:** It scans your environment *before* writing code, preventing duplicate resource collisions.
+*   **Self-Healing Feedback Loops:** If a Pulumi deployment fails, the engine captures the direct compiler `stderr`, feeds it back to the Coder Agent, and corrects the infrastructure code automatically.
+*   **Unified Multi-Cloud Translation:** It translates natural language requirements into concrete, cross-cloud Python IaC and PySpark scripts under a unified safety sandbox.
+
+---
+
+## ⚡ Core Technical Features
+
+### 1. Bi-Directional WebSocket Communication (Socket.io)
+NexusFlow replaces traditional, stateless HTTP SSE streams with a unified **Socket.io** WebSocket server. This allows real-time, bi-directional event emission between the backend LangGraph runtime and the frontend React application over a single TCP connection.
+
+### 2. Thread-Isolated Session Context (`AsyncLocalStorage`)
+To prevent concurrent requests from clashing, NexusFlow implements Node.js `AsyncLocalStorage`. The active WebSocket client connection and session state are preserved across the deep asynchronous boundaries of the agent executions. Any tool or node called by the graph natively targets the exact socket that initiated the thread.
+
+### 3. Native Socket HITL Acknowledgements (`emitWithAck`)
+Human-in-the-Loop (HITL) safety checks use Socket.io's native acknowledgment API. When an agent requests permission to write files or execute commands, the backend pauses using `emitWithAck`. The frontend resolves this pause directly via an event callback, eliminating complex database persistence maps and preventing zombie execution hangs.
+
+### 4. Interactive State "Time Travel" (Timeline Rewind)
+Users can rewind the conversation to any previous step. The frontend slices the message history and updates the session timeline, prompting the backend to initiate a clean run seeded with the truncated history. The agent receives the exact historical context and branches off to evaluate alternative architectures seamlessly.
+
+### 5. Resilient JSON Parsing and Self-Correction
+The `architectNode` implements an aggressive parsing filter that isolates and validates the agent's structural JSON payload. If parsing fails, the backend self-corrects using a prompt that instructs the LLM to strip all conversational conversational preambles and double-check string escape rules.
+
+---
+
+## 🧠 System Architecture
+
+The workflow separation between the real-time orchestration engine and the agent swarm is illustrated below:
 
 ```mermaid
-stateDiagram-v2
-    [*] --> Start
-    Start --> Reception: User Request received
-
-    %% Phase 1: Environment Reconnaissance
-    state Reconnaissance {
-        direction LR
-        EnvScanner: Cloud Explorer Agent
-        ReadCloud: "Use Tools (AWS/Azure SDK)"
-        [*] --> EnvScanner
-        EnvScanner --> ReadCloud: "Check existing S3/RDS/ADF"
-    }
+graph TD
+    A[React Flow Frontend] -- 1. socket.emit('start_chat') --> B[Socket.io Server]
+    B -- 2. Bind Socket to thread context --> C[AsyncLocalStorage]
+    C --> D[LangGraph Workflow Engine]
     
-    Reception --> Reconnaissance
+    subgraph Agent Swarm
+        D --> E[Architect Agent]
+        D --> F[Pipeline Coder Agent]
+        D --> G[DataOps Agent]
+    end
+    
+    subgraph Tool Executions & HITL Gate
+        E & F & G --> H[Tool Execution]
+        H -- 3. askForPermission() --> I{Is Auto-Approved?}
+        I -- No --> J[socket.emitWithAck('permission_request')]
+        J -- 4. User clicks Allow --> A
+        A -- 5. Resolve callback --> J
+        J -- 6. Resume Tool --> K[Execute Cloud / FS Command]
+    end
 
-    %% Phase 2: Planning with Context
-    state Planning {
-        [*] --> Architect
-        Architect --> StrategyDecision: "Combine User Request + Recon Data"
-    }
+🤖 The Agent Personas
 
-    Reconnaissance --> Planning
-    Planning --> Router
+Each node in the LangGraph invokes a specialized agent extending BaseAgent.ts:
 
-    %% Dynamic Branching
-    state Router <<choice>>
-    Router --> DataOpsRoute: "Strategy: DATA_ANALYSIS" (No Code needed)
-    Router --> ETLRoute: "Strategy: GREENFIELD / BROWNFIELD"
+1.  Cloud Architect (architectNode): Analyzes the user request + Explorer's
+    findings. Outputs a JSON plan and assigns an execution strategy (GREENFIELD,
+    BROWNFIELD_ETL, or DATA_ANALYSIS).
+2.  Pipeline Coder (pipelineCoderNode): Writes high-performance PySpark, ADF
+    JSON, or SQL, alongside Pulumi Python scripts. Uses context to know whether
+    to provision new resources (GREENFIELD) or look up existing ones
+    (BROWNFIELD).
+3.  Data Ops (dataOpsNode): Activated for data queries and validation. Connects
+    to existing databases via MCP (Model Context Protocol).
 
-    %% Branch A: Pure Data
-    state DataOpsRoute {
-        DataOpsAgent: "Run Queries via MCP Tools"
-    }
-    DataOpsRoute --> Success
+📂 Directory Structure
 
-    %% Branch B: Code Generation
-    state ETLRoute {
-        direction LR
-        ETLCoder: Write PySpark / ADF Logic
-        IaCCoder: Write Pulumi (Python)
-        [*] --> ETLCoder
-        ETLCoder --> IaCCoder
-    }
-    ETLRoute --> Validation
-
-    %% Phase 3: Gatekeeper
-    state Validation {
-        direction LR
-        Validator: Static Code & Security Audit
-        [*] --> Validator
-    }
-
-    %% Self-Correction Loops
-    Validation --> ETLRoute: Validation FAILED (Loop back to fix logic)
-    Validation --> Deployment: Validation PASSED
-
-    %% Phase 4: Deployment
-    state Deployment {
-        direction LR
-        Deployer: "Execute Pulumi Up via Workspace"
-        [*] --> Deployer
-    }
-
-    Deployment --> ETLRoute: FAILED (Inject Cloud stderr, loop to IaC)
-    Deployment --> Success
-
-    Success --> [*]
-```
-
----
-
-## 🤖 The Agent Personas
-
-Each node in the LangGraph invokes a specialized agent extending `BaseAgent.ts`:
-
-1.  **Cloud Explorer (`explorerNode`)**: Equipped with read-only AWS/Azure SDK tools. Scans the user's cloud to see if requested buckets, DBs, or roles already exist.
-2.  **Cloud Architect (`architectNode`)**: Analyzes the user request + Explorer's findings. Outputs a JSON plan and assigns an execution strategy (`GREENFIELD`, `BROWNFIELD_ETL`, or `DATA_ANALYSIS`).
-3.  **ETL Coder (`etlCoderNode`)**: The heavy lifter. Writes high-performance PySpark, ADF JSON, or SQL. Instructed to properly escape all JSON string outputs to prevent parsing crashes.
-4.  **IaC Coder (`iacCoderNode`)**: Writes Pulumi Python scripts. Uses context to know whether to provision new resources (`GREENFIELD`) or look up existing ones (`BROWNFIELD`).
-5.  **Validator (`validatorNode`)**: The strict gatekeeper. Audits artifacts for hardcoded secrets, syntax errors, and missing dependencies.
-6.  **Data Ops (`dataOpsNode`)**: Activated only for data queries. Connects to existing databases via MCP (Model Context Protocol).
-
----
-
-## 🛠 Core Technologies & Libraries
-
-*   **LLM Orchestration:** `@langchain/langgraph`, `@langchain/openai`, `@langchain/core`
-*   **LLM Router:** OpenRouter (Supports routing to specific models per task, e.g., DeepSeek for Architect, Qwen/Claude for Coders).
-*   **Infrastructure:** Pulumi (Python runtime). Chosen over Terraform because LLMs are substantially better at generating and debugging native Python than HCL.
-*   **Cloud SDKs:** `@aws-sdk/client-*`, `@azure/arm-*`
-*   **Observability:** `@langfuse/langchain`, `@langfuse/otel`, `@opentelemetry/sdk-node`
-*   **Validation/Formatting:** `zod`, `js-yaml`, custom `ParserUtils.ts`
-
----
-
-## 📂 Directory Structure
-
-```text
 NexusFlow/
 ├── backend/
 │   ├── src/
 │   │   ├── agents/            # LLM Prompts and Base classes
-│   │   │   └── roles/         # Specific agent personas
-│   │   ├── config/            # System configuration & HITL settings
+│   │   │   └── roles/         # Specialized agent personas (Architect, Coder, DataOps)
+│   │   ├── config/            # System configuration & setting managers
 │   │   ├── graph/             # LangGraph state machine definition
-│   │   │   ├── nodes.ts       # Function handlers for each graph step
-│   │   │   ├── state.ts       # Central memory annotation object
-│   │   │   └── workflow.ts    # Edge routing and conditional loops
-│   │   ├── mcp/               # Model Context Protocol external servers
-│   │   ├── safety/            # Human-in-the-loop (HITL) and path blocklists
-│   │   ├── services/          # External services (Pulumi execution)
+│   │   │   ├── nodes.ts       # Function handlers for each graph node
+│   │   │   ├── state.ts       # Central memory state definition
+│   │   │   └── workflow.ts    # Edge routing and conditional loop definitions
+│   │   ├── mcp/               # Model Context Protocol clients & server config
+│   │   ├── safety/            # HITL permission gates & path blocklists
+│   │   ├── services/          # External services (Pulumi execution engine)
 │   │   ├── tools/             # Capabilities granted to LLMs
-│   │   │   ├── cloud/         # AWS/Azure Read-Only SDK commands
-│   │   │   ├── fs/            # Local file system edits
-│   │   │   ├── terminal/      # Secure shell execution
-│   │   │   └── toolRegistry.ts# Role-based tool access control
-│   │   ├── tracing/           # Langfuse & OTEL setup
-│   │   ├── utils/             # Helper classes (ParserUtils)
-│   │   └── test-run.ts        # CLI Entry point for pipeline testing
-│   ├── .env
+│   │   └── server.ts          # Socket.io Entry point server
+│   ├── .env                   # Local env secrets & model routing
 │   └── package.json
-└── frontend/                  # (Pending) React Flow UI Dashboard
-```
+└── nexusflow-frontend/        # React Flow / AntD UI Dashboard
+    ├── src/
+    │   ├── App.jsx            # Main interactive dashboard
+    │   ├── main.jsx
+    │   └── index.css
+    └── package.json
 
----
+🚀 Getting Started
 
-## 🔄 The Self-Correction Loop (Note for LLMs)
+1. Prerequisites
 
-**To Future LLM Assistants reading this codebase:** 
-The most critical feature of this application is its *resiliency*. We do not want the app to crash if an LLM hallucinates bad JSON or if AWS rejects an IAM policy. 
+Ensure you have the following installed locally:
 
-1.  **Parsing Failures:** If `ParserUtils.extractOutput()` fails, the node catches the error, sets `state.validationErrors` to the exact error message, and routes back to the specific coder.
-2.  **Deployment Failures:** If `PulumiService` returns a non-zero exit code (e.g., Cloud API rejection), the `DeployerNode` catches `stderr`, sets `state.validationErrors`, and the Graph routes *back to the IaC Coder* to fix the Python infrastructure script.
+  - Node.js (v18+)
+  - Pulumi CLI (for local backend compilation)
+  - Python & uv (virtualenv manager used by the Coder Agent)
+  - Docker (to run the external AWS/Azure MCP servers)
 
-*Always ensure agents return perfectly escaped JSON arrays/objects, avoiding markdown backticks (` ``` `).*
+2. Backend Installation & Setup
 
----
+1.  Navigate to the backend directory and install dependencies:
 
-## 🚀 Getting Started (Development)
+    cd backend
+    npm install
 
-### 1. Prerequisites
-*   Node.js (v18+)
-*   Pulumi CLI installed (`npm install -g pulumi`)
-*   AWS CLI and Azure CLI installed and authenticated (if testing cloud deployments)
+2.  Create a .env file in the backend/ directory:
 
-### 2. Environment Variables
-Create a `.env` file in the `backend/` directory:
+    # OpenRouter LLM Routing
+    OPENROUTER_API_KEY="sk-or-v1-..."
+    OPENROUTER_BASE_URL="https://openrouter.ai/api/v1"
+    APP_URL="http://localhost:5173"
 
-```env
-# LLM Routing
-OPENROUTER_API_KEY="sk-or-v1-..."
-MODEL_NAME="openai/gpt-4o-mini" # Default fallback
+    # Target LLM Models (Llama 70B models are recommended for JSON strictness)
+    ARCHITECT_MODEL_NAME="meta-llama/llama-3.3-70b-instruct"
+    PIPELINE_MODEL_NAME="meta-llama/llama-3.3-70b-instruct"
+    DATAOPS_MODEL_NAME="meta-llama/llama-3.3-70b-instruct"
+    DIAGRAM_MODEL_NAME="meta-llama/llama-3.1-8b-instruct"
 
-# Tracing
-LANGFUSE_PUBLIC_KEY="pk-lf-..."
-LANGFUSE_SECRET_KEY="sk-lf-..."
-LANGFUSE_BASE_URL="https://cloud.langfuse.com"
+    # Web Search Integration
+    TAVILY_API_KEY="tvly-..."
 
-# Cloud Credentials
-AWS_REGION="us-east-1"
-AWS_ACCESS_KEY_ID="..."
-AWS_SECRET_ACCESS_KEY="..."
-AZURE_SUBSCRIPTION_ID="..."
-```
+    # Cloud Credentials (Injected into active shell commands)
+    AWS_REGION="us-east-1"
+    AWS_ACCESS_KEY_ID="..."
+    AWS_SECRET_ACCESS_KEY="..."
+    AZURE_SUBSCRIPTION_ID="..."
 
-### 3. Run the Engine
-To test the pipeline orchestration via the CLI:
-```bash
-cd backend
-npm install
-npx tsx src/test-run.ts
-```
+3.  Start the backend Socket.io server:
 
-### 4. Observe
-Navigate to your Langfuse dashboard to view the exact hierarchical execution trace, tool payloads, and cost metrics for the run.
+    npm run dev
 
----
+3. Frontend Installation & Setup
 
-## 🔮 Next Steps & Roadmap
-*   **Frontend UI:** Build an Express Web Socket server in the backend to stream `currentStep` state updates to a Next.js / React Flow frontend, rendering the active node dynamically.
-*   **State Persistence:** Connect LangGraph to a Postgres database (via `checkpointer`) to allow resuming paused graphs.
-*   **Auto-Cleanup:** Implement a `CLEANUP` node to autonomously run `pulumi destroy` for ephemeral testing workspaces.
+1.  Navigate to the frontend directory and install dependencies:
+
+    cd nexusflow-frontend
+    npm install
+
+2.  Start the development server:
+
+    npm run dev
+
+3.  Open your browser and navigate to http://localhost:5173 to interact with the
+    dashboard.
+
+🔒 Safety and Sandboxing
+
+  - Allowed Directory Constraints: The Coder Agent is strictly limited to
+    reading and writing inside the designated CodeSandBox/ folder. All target
+    paths are checked against directory traversal vectors (..) before file
+    system execution.
+  - Blocked Commands: High-risk actions such as shell access requests containing
+    strings like sudo, rm -rf /, kill, and standard partition formatting
+    utilities are immediately rejected by the security validator.
+  - User Configurable Allowlist: Users can add verified commands, file targets,
+    and MCP services to .nexusflow-settings.json via the frontend settings
+    dashboard to auto-approve repetitive pipeline tasks.
+
