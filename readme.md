@@ -30,7 +30,7 @@ NexusFlow is an intelligent, agent-driven data engineering platform designed to 
 ## 📺 Demonstration Video
 *A walk-through showing real-time execution, human-in-the-loop approvals, and pipeline deployments is available below:*
 
-[![Demonstration Video](https://img.shields.io/badge/Video-Demonstration-red?style=for-the-badge&logo=youtube&logoColor=white)](#) *(Replace this text with your direct video URL or embedding when ready)*
+https://github.com/user-attachments/assets/f3e6d274-7a6e-4af7-a85d-fa88c44446e5
 
 ---
 
