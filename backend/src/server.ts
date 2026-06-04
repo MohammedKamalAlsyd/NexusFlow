@@ -8,7 +8,7 @@ import path from "node:path";
 import { createServer } from "node:http";
 import { Server } from "socket.io";
 import fs from "node:fs/promises";
-import { HumanMessage } from "@langchain/core/messages";
+import { AIMessage, HumanMessage } from "@langchain/core/messages";
 
 import { configManager } from "./config/index.js";
 import { initializeMcpServers } from "./mcp/index.js";
@@ -84,15 +84,22 @@ io.on("connection", (socket) => {
     console.log(`🔌 Client connected: ${socket.id}`);
 
     socket.on("start_chat", async (data) => {
-        const { prompt, sessionId } = data;
+        // Now accepts history from the frontend for Time Travel
+        const { prompt, sessionId, history = [] } = data;
         if (!prompt) return socket.emit("error", { message: "Prompt is required" });
 
         const controller = new AbortController();
         activeStreams.set(sessionId, controller);
-        const initialState = { messages: [new HumanMessage(prompt)] };
 
-        // Run the graph execution INSIDE the AsyncLocalStorage context
-        // This guarantees that any tool called by this workflow has access to this specific socket!
+        // Convert raw history from frontend into LangChain Message Objects
+        const lcMessages = history.map((m: any) =>
+            m.role === 'user' ? new HumanMessage(m.content) : new AIMessage(m.content)
+        );
+        // Append the brand new user prompt
+        lcMessages.push(new HumanMessage(prompt));
+
+        const initialState = { messages: lcMessages };
+
         executionContext.run({ socket, sessionId }, async () => {
             try {
                 const stream = await appGraph.stream(initialState, {

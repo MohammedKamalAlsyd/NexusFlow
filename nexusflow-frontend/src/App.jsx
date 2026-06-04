@@ -32,6 +32,7 @@ import {
   MdWifiOff,
   MdSecurity,
   MdDelete,
+  MdRestore,
 } from "react-icons/md";
 import { DeleteOutlined } from "@ant-design/icons";
 import ReactFlow, {
@@ -82,7 +83,6 @@ export default function NexusDashboard() {
   const [form] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
 
-  // App & Session States
   const [messages, setMessages] = useState(DEFAULT_MESSAGES);
   const [inputValue, setInputValue] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -90,11 +90,9 @@ export default function NexusDashboard() {
   const [currentSessionId, setCurrentSessionId] = useState(() =>
     Date.now().toString(),
   );
+  const [hoveredMsgId, setHoveredMsgId] = useState(null); // For the rewind button
 
-  // Security Modal State
   const [pendingApproval, setPendingApproval] = useState(null);
-
-  // Tracing & Artifact States
   const [traceLogs, setTraceLogs] = useState([]);
   const [code, setCode] = useState({
     pulumi: "# Waiting for generation...",
@@ -123,7 +121,6 @@ export default function NexusDashboard() {
       .catch(console.error);
   }, [form]);
 
-  // Establish WebSocket Connection
   useEffect(() => {
     const socket = io(BACKEND_URL, { transports: ["websocket"] });
     socketRef.current = socket;
@@ -214,6 +211,27 @@ export default function NexusDashboard() {
     messageApi.success("Workspace cleared.");
   };
 
+  // TIME TRAVEL REWIND FUNCTION
+  const handleRewind = (index) => {
+    if (isStreaming) return;
+
+    // Slice arrays up to the chosen point
+    setMessages((prev) => prev.slice(0, index + 1));
+    setTraceLogs([]);
+    setNodes([]);
+    setEdges([]);
+    setCode({
+      pulumi: "# Timeline rewound. Waiting for generation...",
+      pyspark: "# Timeline rewound. Waiting for generation...",
+    });
+
+    // Generate a fresh session ID so the backend graph starts clean
+    setCurrentSessionId(() => Date.now().toString());
+    messageApi.info(
+      "Rewound timeline. Send a new prompt to branch off from here.",
+    );
+  };
+
   const handleSaveConfig = async (values) => {
     try {
       const res = await fetch(`${BACKEND_URL}/api/config`, {
@@ -280,9 +298,18 @@ export default function NexusDashboard() {
     setInputValue("");
     setIsStreaming(true);
 
+    // Extract conversation history to send as context for time-travel or continuity
+    const historyPayload = messages
+      .filter((m) => m.sender !== "system") // Skip system logs
+      .map((m) => ({
+        role: m.sender === "user" ? "user" : "assistant",
+        content: m.content,
+      }));
+
     socketRef.current.emit("start_chat", {
       prompt: userPrompt,
       sessionId: currentSessionId,
+      history: historyPayload,
     });
   };
 
@@ -440,9 +467,11 @@ export default function NexusDashboard() {
               gap: "20px",
             }}
           >
-            {messages.map((msg) => (
+            {messages.map((msg, index) => (
               <div
                 key={msg.id}
+                onMouseEnter={() => setHoveredMsgId(msg.id)}
+                onMouseLeave={() => setHoveredMsgId(null)}
                 style={{
                   display: "flex",
                   flexDirection: "column",
@@ -451,21 +480,48 @@ export default function NexusDashboard() {
                 }}
               >
                 {msg.sender === "bot" && (
-                  <Space style={{ marginBottom: 4 }}>
-                    <Avatar
-                      size={22}
-                      style={{ backgroundColor: msg.persona.color }}
-                      icon={<MdSmartToy size={12} />}
-                    />
-                    <Text
-                      style={{
-                        fontSize: "11px",
-                        color: "#64748b",
-                        fontWeight: 600,
-                      }}
-                    >
-                      {msg.persona.name}
-                    </Text>
+                  <Space
+                    style={{
+                      marginBottom: 4,
+                      width: "100%",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <Space>
+                      <Avatar
+                        size={22}
+                        style={{ backgroundColor: msg.persona.color }}
+                        icon={<MdSmartToy size={12} />}
+                      />
+                      <Text
+                        style={{
+                          fontSize: "11px",
+                          color: "#64748b",
+                          fontWeight: 600,
+                        }}
+                      >
+                        {msg.persona.name}
+                      </Text>
+                    </Space>
+
+                    {/* REWIND BUTTON */}
+                    {hoveredMsgId === msg.id &&
+                      !isStreaming &&
+                      index !== messages.length - 1 && (
+                        <Tooltip title="Rewind chat to this point">
+                          <Button
+                            type="text"
+                            size="small"
+                            icon={<MdRestore />}
+                            onClick={() => handleRewind(index)}
+                            style={{
+                              color: "#6366f1",
+                              height: "20px",
+                              padding: "0 4px",
+                            }}
+                          />
+                        </Tooltip>
+                      )}
                   </Space>
                 )}
                 <div
@@ -714,7 +770,6 @@ export default function NexusDashboard() {
         </div>
       </div>
 
-      {/* Security Approval Modal */}
       <Modal
         title={
           <Space>
@@ -764,7 +819,6 @@ export default function NexusDashboard() {
         </div>
       </Modal>
 
-      {/* Settings Modal */}
       <Modal
         title="NexusFlow Settings"
         open={isSettingsOpen}

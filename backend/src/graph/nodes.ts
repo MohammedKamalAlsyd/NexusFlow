@@ -114,11 +114,15 @@ export const architectNode = async (state: typeof AgentState.State, config?: Run
             }
 
             // ─── SELF-CORRECTION LOOP ───────────────────────────────
-            // Append the error to the message history and invoke again.
-            // By passing the history, the agent skips running the tools again and immediately fixes its JSON string.
             currentMessages.push({
                 role: "user",
-                content: `Your previous output caused a JSON parsing error: "${error.message}". Please fix the formatting and output ONLY the valid JSON object.`
+                content: `Your previous output caused a JSON parsing error: "${error.message}".
+                
+                RULES FOR THIS RETRY:
+                1. DO NOT APOLOGIZE.
+                2. DO NOT say "Here is the corrected JSON".
+                3. Ensure all internal double quotes are escaped (e.g., \\").
+                4. Output ONLY the raw { ... } JSON object and absolutely nothing else.`
             });
         }
     }

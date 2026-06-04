@@ -9,7 +9,7 @@ export class PipelineCoderAgent extends BaseAgent {
     constructor() {
         super({
             name: "pipeline-coder",
-            model_name: process.env.PIPELINE_MODEL_NAME || "deepseek/deepseek-v4-pro",
+            model_name: process.env.PIPELINE_MODEL_NAME || "meta-llama/llama-4-maverick",
             maxTokens: 8192,
             systemPrompt: `You are an Autonomous Data Engineering Architect. Your goal is to deliver production-ready infrastructure and ETL logic.
 
