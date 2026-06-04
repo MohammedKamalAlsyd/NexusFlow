@@ -120,7 +120,7 @@ Each node in the LangGraph invokes a specialized agent extending BaseAgent.ts:
     to existing databases via MCP (Model Context Protocol).
 
 📂 Directory Structure
-
+```
 NexusFlow/
 ├── backend/
 │ ├── src/
@@ -144,7 +144,7 @@ NexusFlow/
 │ ├── main.jsx
 │ └── index.css
 └── package.json
-
+```
 🚀 Getting Started
 
 1. Prerequisites
@@ -159,12 +159,12 @@ Ensure you have the following installed locally:
 2. Backend Installation & Setup
 
 1. Navigate to the backend directory and install dependencies:
-
+```
    cd backend
    npm install
-
+```
 1. Create a .env file in the backend/ directory:
-
+```
    # OpenRouter LLM Routing
 
    OPENROUTER_API_KEY="sk-or-v1-..."
@@ -188,22 +188,22 @@ Ensure you have the following installed locally:
    AWS_ACCESS_KEY_ID="..."
    AWS_SECRET_ACCESS_KEY="..."
    AZURE_SUBSCRIPTION_ID="..."
-
+```
 1. Start the backend Socket.io server:
-
+```
    npm run dev
-
+```
 1. Frontend Installation & Setup
 
 1. Navigate to the frontend directory and install dependencies:
-
+```
    cd nexusflow-frontend
    npm install
-
+```
 1. Start the development server:
-
+```
    npm run dev
-
+```
 1. Open your browser and navigate to http://localhost:5173 to interact with the
    dashboard.
 
